@@ -195,6 +195,14 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     const [judgeFilter, setJudgeFilter] = useState('All Judges');
     const [institutionJudges, setInstitutionJudges] = useState<any[]>([]);
     const [isBulkNotifyModalOpen, setIsBulkNotifyModalOpen] = useState(false);
+    const [selectedRegistrations, setSelectedRegistrations] = useState<string[]>([]);
+    
+    const toggleRegistrationSelection = (id: string) => {
+        setSelectedRegistrations(prev => 
+            prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+        );
+    };
+
     const [bulkNotifyMessage, setBulkNotifyMessage] = useState('');
     const [bulkNotifySubject, setBulkNotifySubject] = useState('');
     const [bulkNotifyNextStage, setBulkNotifyNextStage] = useState('');
@@ -212,6 +220,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     const [regTotalPages, setRegTotalPages] = useState(1);
     const [regSearch, setRegSearch] = useState('');
     const [regStatusFilter, setRegStatusFilter] = useState('');
+    const [regNotificationFilter, setRegNotificationFilter] = useState('ALL');
     const [regLoading, setRegLoading] = useState(false);
     const [regActionBusy, setRegActionBusy] = useState<string | null>(null);
     const [expandedRegId, setExpandedRegId] = useState<string | null>(null);
@@ -228,12 +237,20 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     const [profileTypeLockedForPrefill, setProfileTypeLockedForPrefill] = useState(false);
 
     const fetchRegistrations = async () => {
-        if (!eventId || activeTab !== 'registrations') return;
+        console.log('fetchRegistrations called. eventId:', eventId, 'activeTab:', activeTab);
+        if (!eventId || activeTab !== 'registrations') {
+            console.log('fetchRegistrations skipped: eventId missing or activeTab is not registrations');
+            return;
+        }
         setRegLoading(true);
         try {
+            const backendStatus = (regStatusFilter === 'APPROVED_NOTIFIED' || regStatusFilter === 'APPROVED_UNNOTIFIED')
+                ? 'APPROVED'
+                : regStatusFilter;
+
             const queryParams = new URLSearchParams({
                 search: regSearch,
-                status: regStatusFilter
+                status: backendStatus
             });
             const res = await fetch(`${API_BASE_URL}/api/v1/registration/events/${eventId}/roster?${queryParams.toString()}`, {
                 headers: authHeaders()
@@ -322,23 +339,56 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
         }
     };
 
-    const handleNotifyApproved = async () => {
+    const handleMarkNotified = async (registrationId: string) => {
         if (!eventId) return;
-        const count = (regStats as any).pending_notification ?? regStats.approved;
-        if (count === 0 && regStats.approved > 0) {
-            alert('All approved participants have already been notified.');
+        setRegActionBusy(registrationId);
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/v1/registration/events/${eventId}/participants/${registrationId}/mark-notified`, {
+                method: 'PATCH',
+                headers: authHeaders()
+            });
+            if (res.ok) {
+                setRefreshCounter(prev => prev + 1);
+                setShowSaveSuccess(true);
+                setTimeout(() => setShowSaveSuccess(false), 2000);
+            } else {
+                const err = await res.json().catch(() => ({}));
+                alert(`Failed: ${err.detail || 'Unknown error'}`);
+            }
+        } catch (err) {
+            console.error('Error marking registration notified:', err);
+            alert('Network error.');
+        } finally {
+            setRegActionBusy(null);
+        }
+    };
+
+    const handleNotifyApproved = async (registrationIds?: string[]) => {
+        if (!eventId) return;
+        
+        const count = registrationIds ? registrationIds.length : ((regStats as any).pending_notification ?? regStats.approved);
+        
+        if (count === 0) {
+            alert('No participants selected to notify.');
             return;
         }
-        if (!confirm(`Send notification email to ${count} newly approved participant${count === 1 ? '' : 's'}?`)) return;
+
+        if (!confirm(`Send notification email to ${count} participant${count === 1 ? '' : 's'}?`)) return;
         setNotifyingApproved(true);
         try {
             const res = await fetch(`${API_BASE_URL}/api/v1/registration/events/${eventId}/notify-approved`, {
                 method: 'POST',
-                headers: { ...authHeaders() },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    ...authHeaders() 
+                },
+                body: JSON.stringify({ registration_ids: registrationIds || null })
             });
             const data = await res.json();
             if (res.ok) {
                 alert(`Notification sent to ${data.sent} approved participants.`);
+                setSelectedRegistrations([]); // Clear selection
+                setRefreshCounter(prev => prev + 1); // Refresh to update 'notified_at' status
             } else {
                 alert('Failed: ' + (data.detail || 'Unknown error'));
             }
@@ -2622,6 +2672,30 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     );
 
     const renderTabContent_Registrations = () => {
+        // Filter team list by status / notification filter
+        const filteredTeams = rosterTeams.filter((team: any) => {
+            if (regStatusFilter === 'APPROVED_NOTIFIED') {
+                if (team.status !== 'APPROVED') return false;
+                return team.members && team.members.length > 0 && team.members.every((m: any) => m.notified_at);
+            }
+            if (regStatusFilter === 'APPROVED_UNNOTIFIED') {
+                if (team.status !== 'APPROVED') return false;
+                return !team.members || team.members.length === 0 || !team.members.every((m: any) => m.notified_at);
+            }
+            return true;
+        });
+
+        // Filter solo list by status / notification filter
+        const filteredSolos = registrations.filter((reg: any) => {
+            if (regStatusFilter === 'APPROVED_NOTIFIED') {
+                return reg.status === 'APPROVED' && !!reg.notified_at;
+            }
+            if (regStatusFilter === 'APPROVED_UNNOTIFIED') {
+                return reg.status === 'APPROVED' && !reg.notified_at;
+            }
+            return true;
+        });
+
         return (
             <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500 font-sans">
                 {/* 1. Header Command Card */}
@@ -2743,14 +2817,15 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                             className="px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 outline-none focus:ring-4 focus:ring-purple-50 transition-all min-w-[200px]"
                         >
                             <option value="">All Verification States</option>
-                            <option value="APPROVED">Approved Only</option>
+                            <option value="APPROVED_NOTIFIED">Approved & Notified</option>
+                            <option value="APPROVED_UNNOTIFIED">Approved & Unnotified</option>
                             <option value="PENDING_APPROVAL">Pending Verification</option>
                             <option value="WAITLISTED">Waitlisted</option>
                             <option value="REJECTED">Rejected</option>
                         </select>
                                 <button
-                                    onClick={handleNotifyApproved}
-                                    disabled={notifyingApproved || ((regStats as any).pending_notification === 0)}
+                                    onClick={() => handleNotifyApproved(selectedRegistrations.length > 0 ? selectedRegistrations : undefined)}
+                                    disabled={notifyingApproved || (((regStats as any).pending_notification === 0) && selectedRegistrations.length === 0)}
                                     className="px-5 py-4 bg-purple-50 hover:bg-[#6C3BFF] hover:text-white border border-purple-100 text-[#6C3BFF] rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 disabled:opacity-40"
                                 >
                                     {notifyingApproved ? (
@@ -2758,7 +2833,10 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                     ) : (
                                         <Send size={14} />
                                     )}
-                                    Notify {(regStats as any).pending_notification ?? regStats.approved} Approved
+                                    {selectedRegistrations.length > 0 
+                                        ? `Notify ${selectedRegistrations.length} Selected` 
+                                        : `Notify ${(regStats as any).pending_notification ?? regStats.approved} Approved`
+                                    }
                                 </button>
                     </div>
                 </div>
@@ -2776,32 +2854,45 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                             <table className="w-full text-left">
                                 <thead>
                                     <tr className="bg-slate-50/50 border-b border-slate-100">
-                                        <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest w-6"></th>
+                                        <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest w-6">
+                                            <input type="checkbox" onChange={(e) => {
+                                                if (e.target.checked) {
+                                                    // Select all approved that have not been notified yet in the current view
+                                                    const approvedIds = filteredSolos.filter((p: any) => p.status === 'APPROVED' && !p.notified_at).map((p: any) => p._id);
+                                                    setSelectedRegistrations(approvedIds);
+                                                } else {
+                                                    setSelectedRegistrations([]);
+                                                }
+                                            }} />
+                                        </th>
                                         <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Applicant</th>
-                                        <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Education & Contact</th>
+                                        <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">College</th>
                                         <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
                                         <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
                                     {/* --- TEAM BUNDLES --- */}
-                                    {rosterTeams.length > 0 && rosterTeams.map((team: any) => {
+                                    {filteredTeams.length > 0 && filteredTeams.filter((t: any) => t.team_id).map((team: any) => {
                                         const isTeamExpanded = expandedRegId === team.team_id;
                                         const isActionBusy = regActionBusy === team.team_id;
                                         return (
                                             <React.Fragment key={team.team_id}>
                                                 <tr className="hover:bg-purple-50/40 transition-colors group bg-slate-50/30">
                                                     <td className="px-8 py-5">
-                                                        <button 
-                                                            onClick={() => setExpandedRegId(isTeamExpanded ? null : team.team_id)}
-                                                            className="p-1.5 hover:bg-purple-100 rounded-lg text-purple-400 hover:text-[#6C3BFF] transition-all shadow-sm"
-                                                            title={isTeamExpanded ? "Collapse Team" : "Expand Team Details"}
-                                                        >
-                                                            <ChevronRight 
-                                                                size={14} 
-                                                                className={`transform transition-transform duration-300 ${isTeamExpanded ? 'rotate-90 text-[#6C3BFF]' : ''}`} 
-                                                            />
-                                                        </button>
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="w-4 h-4 shrink-0" /> {/* Spacer to align with solo checkboxes */}
+                                                            <button 
+                                                                onClick={() => setExpandedRegId(isTeamExpanded ? null : team.team_id)}
+                                                                className="p-1.5 hover:bg-purple-100 rounded-lg text-purple-400 hover:text-[#6C3BFF] transition-all shadow-sm"
+                                                                title={isTeamExpanded ? "Collapse Team" : "Expand Team Details"}
+                                                            >
+                                                                <ChevronRight 
+                                                                    size={14} 
+                                                                    className={`transform transition-transform duration-300 ${isTeamExpanded ? 'rotate-90 text-[#6C3BFF]' : ''}`} 
+                                                                />
+                                                            </button>
+                                                        </div>
                                                     </td>
                                                     <td className="px-8 py-5">
                                                         <div className="flex items-center gap-3">
@@ -2820,14 +2911,22 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                                         </span>
                                                     </td>
                                                     <td className="px-8 py-5">
-                                                        <span className={`px-3 py-1 rounded-full border text-[9px] font-black uppercase tracking-widest ${
-                                                            team.status === 'APPROVED' ? 'bg-emerald-50 text-emerald-600 border-emerald-100/50 shadow-sm' :
-                                                            team.status === 'REJECTED' ? 'bg-red-50 text-red-600 border-red-100/50' :
-                                                            team.status === 'WAITLISTED' ? 'bg-indigo-50 text-indigo-600 border-indigo-100/50' :
-                                                            'bg-amber-50 text-amber-600 border-amber-100/50 animate-pulse'
-                                                        }`}>
-                                                            {team.status === 'PENDING_APPROVAL' ? 'Pending' : team.status}
-                                                        </span>
+                                                        <div className="flex flex-col items-start gap-1.5">
+                                                            <span className={`px-3 py-1 rounded-full border text-[9px] font-black uppercase tracking-widest ${
+                                                                team.status === 'APPROVED' ? 'bg-emerald-50 text-emerald-600 border-emerald-100/50 shadow-sm' :
+                                                                team.status === 'REJECTED' ? 'bg-red-50 text-red-600 border-red-100/50' :
+                                                                team.status === 'WAITLISTED' ? 'bg-indigo-50 text-indigo-600 border-indigo-100/50' :
+                                                                'bg-amber-50 text-amber-600 border-amber-100/50 animate-pulse'
+                                                            }`}>
+                                                                {team.status === 'PENDING_APPROVAL' ? 'Pending' : team.status}
+                                                            </span>
+                                                            {team.status === 'APPROVED' && team.members && team.members.length > 0 && team.members.every((m: any) => m.notified_at) && (
+                                                                <span className="px-2 py-0.5 bg-purple-50 text-[#6C3BFF] border border-purple-100/50 rounded text-[8px] font-bold uppercase tracking-wider flex items-center gap-1">
+                                                                    <span className="w-1 h-1 rounded-full bg-[#6C3BFF]" />
+                                                                    Notified
+                                                                </span>
+                                                            )}
+                                                        </div>
                                                     </td>
                                                     <td className="px-8 py-5 text-right">
                                                         <div className="flex justify-end gap-2 items-center">
@@ -2889,7 +2988,15 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                                                 </div>
                                                             </td>
                                                             <td className="px-8 py-4">
-                                                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Inherits Team Status</span>
+                                                                <div className="flex flex-col items-start gap-1">
+                                                                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Inherits Team Status</span>
+                                                                    {reg.notified_at && (
+                                                                        <span className="px-2 py-0.5 bg-purple-50 text-[#6C3BFF] border border-purple-100/50 rounded text-[8px] font-bold uppercase tracking-wider flex items-center gap-1">
+                                                                            <span className="w-1 h-1 rounded-full bg-[#6C3BFF]" />
+                                                                            Notified
+                                                                        </span>
+                                                                    )}
+                                                                </div>
                                                             </td>
                                                             <td className="px-8 py-4 text-right">
                                                                 <div className="flex justify-end gap-1.5 items-center">
@@ -3022,8 +3129,8 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                     })}
                                     
                                     {/* --- SOLO APPLICANTS --- */}
-                                    {registrations.length > 0 ? (
-                                        registrations.map((reg) => {
+                                    {filteredSolos.filter((r: any) => r._id).length > 0 ? (
+                                        filteredSolos.filter((r: any) => r._id).map((reg) => {
                                             const prof = reg.profile_snapshot || {};
                                             const customAnswers = reg.custom_answers || {};
                                             const isExpanded = expandedRegId === reg._id;
@@ -3033,16 +3140,24 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                                 <React.Fragment key={reg._id}>
                                                     <tr className="hover:bg-slate-50/30 transition-colors group">
                                                         <td className="px-8 py-5">
-                                                            <button 
-                                                                onClick={() => setExpandedRegId(isExpanded ? null : reg._id)}
-                                                                className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-[#6C3BFF] transition-all"
-                                                                title={isExpanded ? "Collapse Details" : "Expand Custom Answers & Profile"}
-                                                            >
-                                                                <ChevronRight 
-                                                                    size={14} 
-                                                                    className={`transform transition-transform duration-300 ${isExpanded ? 'rotate-90 text-[#6C3BFF]' : ''}`} 
+                                                            <div className="flex items-center gap-2">
+                                                                <input 
+                                                                    type="checkbox" 
+                                                                    checked={selectedRegistrations.includes(reg._id)} 
+                                                                    onChange={() => toggleRegistrationSelection(reg._id)} 
+                                                                    className="rounded border-slate-300 text-[#6C3BFF] focus:ring-[#6C3BFF]"
                                                                 />
-                                                            </button>
+                                                                <button 
+                                                                    onClick={() => setExpandedRegId(isExpanded ? null : reg._id)}
+                                                                    className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-[#6C3BFF] transition-all"
+                                                                    title={isExpanded ? "Collapse Details" : "Expand Custom Answers & Profile"}
+                                                                >
+                                                                    <ChevronRight 
+                                                                        size={14} 
+                                                                        className={`transform transition-transform duration-300 ${isExpanded ? 'rotate-90 text-[#6C3BFF]' : ''}`} 
+                                                                    />
+                                                                </button>
+                                                            </div>
                                                         </td>
                                                         <td className="px-8 py-5">
                                                             <div className="flex items-center gap-3">
@@ -3071,14 +3186,22 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                                             </div>
                                                         </td>
                                                         <td className="px-8 py-5">
-                                                            <span className={`px-3 py-1 rounded-full border text-[9px] font-black uppercase tracking-widest ${
-                                                                reg.status === 'APPROVED' ? 'bg-emerald-50 text-emerald-600 border-emerald-100/50 shadow-sm' :
-                                                                reg.status === 'REJECTED' ? 'bg-red-50 text-red-600 border-red-100/50' :
-                                                                reg.status === 'WAITLISTED' ? 'bg-indigo-50 text-indigo-600 border-indigo-100/50' :
-                                                                'bg-amber-50 text-amber-600 border-amber-100/50 animate-pulse'
-                                                            }`}>
-                                                                {reg.status === 'PENDING_APPROVAL' ? 'Pending' : reg.status}
-                                                            </span>
+                                                            <div className="flex flex-col items-start gap-1.5">
+                                                                <span className={`px-3 py-1 rounded-full border text-[9px] font-black uppercase tracking-widest ${
+                                                                    reg.status === 'APPROVED' ? 'bg-emerald-50 text-emerald-600 border-emerald-100/50 shadow-sm' :
+                                                                    reg.status === 'REJECTED' ? 'bg-red-50 text-red-600 border-red-100/50' :
+                                                                    reg.status === 'WAITLISTED' ? 'bg-indigo-50 text-indigo-600 border-indigo-100/50' :
+                                                                    'bg-amber-50 text-amber-600 border-amber-100/50 animate-pulse'
+                                                                }`}>
+                                                                    {reg.status === 'PENDING_APPROVAL' ? 'Pending' : reg.status}
+                                                                </span>
+                                                                {reg.status === 'APPROVED' && reg.notified_at && (
+                                                                    <span className="px-2 py-0.5 bg-purple-50 text-[#6C3BFF] border border-purple-100/50 rounded text-[8px] font-bold uppercase tracking-wider flex items-center gap-1">
+                                                                        <span className="w-1 h-1 rounded-full bg-[#6C3BFF]" />
+                                                                        Notified
+                                                                    </span>
+                                                                )}
+                                                            </div>
                                                         </td>
                                                         <td className="px-8 py-5 text-right">
                                                             <div className="flex justify-end gap-1.5 items-center">
@@ -3247,9 +3370,9 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                             </React.Fragment>
                                         );
                                     })
-                                ) : (
+                                ) : (filteredSolos.length === 0 && filteredTeams.length === 0) ? (
                                     <tr>
-                                        <td colSpan={6} className="px-10 py-32 text-center">
+                                        <td colSpan={5} className="px-10 py-32 text-center">
                                             <div className="flex flex-col items-center opacity-30">
                                                 <Users size={64} className="text-slate-300 mb-6" />
                                                 <h4 className="text-lg font-black text-slate-400 uppercase tracking-widest leading-none mb-2">No Applications Found</h4>
@@ -3257,7 +3380,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                             </div>
                                         </td>
                                     </tr>
-                                        )}
+                                ) : null}
                                     </tbody>
                         </table>
                     </div>
@@ -3633,7 +3756,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                     </thead>
                                     <tbody className="divide-y divide-slate-100">
                                         {participants.length > 0 ? (
-                                            participants.map((p: any) => {
+                                            participants.filter((p: any) => p._id || p.user_id).map((p: any) => {
                                                 const src = p.source || '';
                                                 const registrationData = p.registration_data || p.profile_snapshot || {};
                                                 const canReview =

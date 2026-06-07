@@ -12,13 +12,15 @@ import logging
 from fastapi import APIRouter, HTTPException, Depends, Body, File, UploadFile, status, Query
 from fastapi.responses import StreamingResponse
 from auth_institution import get_auth_user
-from db import db, user_profiles_col, registrations_col, events_col, participants_col, users_col, opportunities_col
+from db import db, user_profiles_col, registrations_col, events_col, participants_col, users_col, opportunities_col, announcements_col, announcement_audit_col
 from bson import ObjectId
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 from pydantic import BaseModel
 import shutil
+import asyncio
 from services.registration_service import validate_event_restrictions
+from services.email_service import send_notification_email
 
 async def resolve_event_id(event_id: str) -> str:
     """
@@ -1341,12 +1343,40 @@ async def get_event_roster(
             ]
             
         cursor = registrations_col.find(query).sort("registered_at", -1)
+        email_delivery_logs_col = db["email_delivery_logs"]
         
         solos = []
         teams_map = {}
         
         async for r in cursor:
             r["_id"] = str(r["_id"])
+            
+            # Auto-healing: If approved but notified_at is None, check actual email logs
+            if r.get("status") == "APPROVED" and not r.get("notified_at"):
+                prof = r.get("profile_snapshot") or {}
+                email = r.get("email") or prof.get("email")
+                if email:
+                    log_query = {
+                        "recipient": email.strip().lower(),
+                        "status": "sent",
+                        "$or": [
+                            {"metadata.event_id": str(event_id)},
+                            {"subject": {"$regex": event.get("title", ""), "$options": "i"}}
+                        ]
+                    }
+                    log_doc = await email_delivery_logs_col.find_one(log_query)
+                    if log_doc:
+                        notified_time = log_doc.get("created_at") or datetime.now(timezone.utc)
+                        r["notified_at"] = notified_time
+                        # Auto-heal the registrations record in db
+                        try:
+                            await registrations_col.update_one(
+                                {"_id": ObjectId(r["_id"])},
+                                {"$set": {"notified_at": notified_time}}
+                            )
+                        except Exception:
+                            pass
+            
             team_id = r.get("team_id")
             
             if team_id:
@@ -1392,65 +1422,36 @@ async def get_event_roster(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.patch("/events/{event_id}/teams/{team_id}/status")
-async def update_team_status_admin(
+@router.patch("/events/{event_id}/participants/{registration_id}/mark-notified")
+async def mark_participant_notified(
     event_id: str,
-    team_id: str,
-    status_update: str = Body(embed=True),
+    registration_id: str,
     user: dict = Depends(get_auth_user)
 ):
-    """
-    Host Admin Endpoint: Bulk approve/reject all members of a team.
-    """
-    try:
-        try:
-            ev_id = ObjectId(event_id)
-        except Exception:
-            ev_id = event_id
-            
-        event = await events_col.find_one({"_id": ev_id}) if isinstance(ev_id, ObjectId) else await events_col.find_one({"event_id": event_id})
-        if not event:
-            raise HTTPException(status_code=404, detail="Event not found")
-            
-        if str(event.get("institution_id")) != str(user.get("institution_id")):
-            raise HTTPException(status_code=403, detail="Permission denied")
-            
-        new_status = status_update.upper()
-        allowed_statuses = {"APPROVED", "REJECTED", "WAITLISTED", "PENDING_APPROVAL"}
-        if new_status not in allowed_statuses:
-            raise HTTPException(status_code=400, detail=f"Invalid status value. Must be one of: {allowed_statuses}")
-            
-        # Update all registrations for this team
-        await registrations_col.update_many(
-            {"event_id": str(event_id), "team_id": team_id},
-            {"$set": {"status": new_status, "updated_at": datetime.now(timezone.utc)}}
-        )
-        
-        # Propagate to participants collection
-        participant_status = "registered"
-        if new_status == "APPROVED":
-            participant_status = "registered"
-        elif new_status == "REJECTED":
-            participant_status = "rejected"
-        elif new_status == "WAITLISTED":
-            participant_status = "pending"
-            
-        await participants_col.update_many(
-            {"event_id": str(event_id), "team_id": team_id},
-            {"$set": {"status": participant_status, "updated_at": datetime.now(timezone.utc)}}
-        )
-        
-        return {"status": "success", "message": f"All team members updated to {new_status}."}
+    """Admin Endpoint: Manually mark a specific registration as notified."""
+    from datetime import datetime, timezone
+    # 1. Update the record
+    result = await registrations_col.update_one(
+        {"_id": ObjectId(registration_id), "event_id": event_id},
+        {"$set": {"notified_at": datetime.now(timezone.utc)}}
+    )
+    if result.modified_count == 0:
+        raise HTTPException(status_code=404, detail="Registration not found or already marked.")
+    return {"status": "success", "message": "Participant marked as notified."}
 
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+from pydantic import BaseModel
+from typing import List, Optional
 
+class NotifyApprovedRequest(BaseModel):
+    registration_ids: Optional[List[str]] = None
 
 @router.post("/events/{event_id}/notify-approved")
-async def notify_approved_participants(event_id: str, user: dict = Depends(get_auth_user)):
-    """Send email notification to all APPROVED participants about next stage."""
+async def notify_approved_participants(
+    event_id: str, 
+    request: NotifyApprovedRequest, 
+    user: dict = Depends(get_auth_user)
+):
+    """Send email notification to APPROVED participants about next stage (optionally specific ones)."""
     try:
         try:
             ev_id = ObjectId(event_id)
@@ -1471,7 +1472,7 @@ async def notify_approved_participants(event_id: str, user: dict = Depends(get_a
         app_logo_url = f"{frontend_url}/images/studlyf.png" if frontend_url else ""
         org_name = event.get("organization_name") or event.get("institution_name") or "Organization"
         event_title = event.get("title", "Event")
-
+        
         # Find next upcoming stage
         now = datetime.now(timezone.utc)
         upcoming = []
@@ -1493,10 +1494,14 @@ async def notify_approved_participants(event_id: str, user: dict = Depends(get_a
         next_stage_name = upcoming[0][1] if upcoming else ""
         next_stage_active = now >= upcoming[0][0] if upcoming else False
 
-        # Only notify those who haven't been notified yet
-        approved = await registrations_col.find(
-            {"event_id": str(event_id), "status": "APPROVED", "notified_at": None}
-        ).to_list(length=50000)
+        # Query filter
+        query = {"event_id": str(event_id), "status": "APPROVED"}
+        if request.registration_ids:
+            query["_id"] = {"$in": [ObjectId(rid) for rid in request.registration_ids]}
+        else:
+            query["notified_at"] = None
+
+        approved = await registrations_col.find(query).to_list(length=50000)
 
         sent = 0
         errors = []
@@ -1557,127 +1562,3 @@ async def notify_approved_participants(event_id: str, user: dict = Depends(get_a
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/events/{event_id}/export-csv")
-async def export_registrations_csv(event_id: str, user: dict = Depends(get_auth_user)):
-    """Host Admin Endpoint: Export registrations and custom answers summary to a downloadable CSV."""
-    try:
-        try:
-            ev_id = ObjectId(event_id)
-        except Exception:
-            ev_id = event_id
-            
-        event = await events_col.find_one({"_id": ev_id}) if isinstance(ev_id, ObjectId) else await events_col.find_one({"event_id": event_id})
-        if not event:
-            raise HTTPException(status_code=404, detail="Event not found")
-            
-        # Verify host owns event
-        if str(event.get("institution_id")) != str(user.get("institution_id")):
-            raise HTTPException(status_code=403, detail="You do not have permission to export registrations.")
-            
-        custom_questions = event.get("custom_questions") or []
-        custom_headers = [q.get("label") for q in custom_questions]
-        
-        headers = [
-            "Full Name", "Email", "Phone Number", "Gender", "College Name",
-            "Degree", "Branch", "Graduation Year", "CGPA", "LinkedIn", "GitHub", "Resume", "Status", "Registered At"
-        ] + custom_headers
-        
-        output = io.StringIO()
-        writer = csv.writer(output)
-        writer.writerow(headers)
-        
-        cursor = registrations_col.find({"event_id": str(event_id)}).sort("registered_at", -1)
-        async for r in cursor:
-            prof = r.get("profile_snapshot") or {}
-            custom = r.get("custom_answers") or {}
-            
-            custom_row = []
-            for q in custom_questions:
-                q_id = q.get("id")
-                custom_row.append(str(custom.get(q_id, "")))
-                
-            registered_time = r.get("registered_at")
-            reg_time_str = registered_time.strftime("%Y-%m-%d %H:%M:%S") if isinstance(registered_time, datetime) else str(registered_time)
-            
-            row = [
-                prof.get("full_name", ""),
-                prof.get("email", ""),
-                prof.get("phone", ""),
-                prof.get("gender", ""),
-                prof.get("college", ""),
-                prof.get("degree", ""),
-                prof.get("branch", ""),
-                prof.get("graduation_year", ""),
-                prof.get("cgpa", ""),
-                prof.get("linkedin_url", ""),
-                prof.get("github_url", ""),
-                prof.get("resume_url", ""),
-                r.get("status", ""),
-                reg_time_str
-            ] + custom_row
-            writer.writerow(row)
-            
-        output.seek(0)
-        
-        response = StreamingResponse(
-            io.BytesIO(output.getvalue().encode("utf-8")),
-            media_type="text/csv"
-        )
-        response.headers["Content-Disposition"] = f"attachment; filename=registrations_{event_id}.csv"
-        return response
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.post("/events/{event_id}/update")
-async def update_event_registration(event_id: str, request: ApplyRegistrationRequest, user: dict = Depends(get_auth_user)):
-    """
-    Updates existing registration. Validates deadline and required fields.
-    """
-    try:
-        event_id = await resolve_event_id(event_id)
-        # Check deadline
-        await check_stage_deadline(event_id=str(event_id), stage_index=0)
-        
-        # Check existing
-        reg = await registrations_col.find_one({"event_id": str(event_id), "user_id": user["user_id"]})
-        if not reg:
-            raise HTTPException(status_code=404, detail="No registration found to update.")
-
-        # Re-validate (copied logic from apply_for_event)
-        event = await events_col.find_one({"_id": ObjectId(event_id)})
-        settings = event.get("registration_settings") or {}
-        profile_fields_config = normalize_profile_fields_config(settings.get("profile_fields_config") or {})
-        
-        profile_data = request.profile_data
-        for field, status_str in profile_fields_config.items():
-            if status_str == "REQUIRED" and not profile_data.get(field):
-                raise HTTPException(status_code=400, detail=f"Field '{field}' is required.")
-
-        # Update
-        await registrations_col.update_one(
-            {"_id": reg["_id"]},
-            {"$set": {
-                "profile_snapshot": profile_data,
-                "custom_answers": request.custom_answers,
-                "updated_at": datetime.now(timezone.utc)
-            }}
-        )
-        
-        await participants_col.update_one(
-            {"event_id": str(event_id), "user_id": user["user_id"]},
-            {"$set": {
-                "registration_data": {**profile_data, **request.custom_answers},
-                "updated_at": datetime.now(timezone.utc)
-            }}
-        )
-
-        return {"status": "success", "message": "Registration updated successfully."}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
