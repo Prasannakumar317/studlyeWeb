@@ -617,7 +617,7 @@ async def upload_temp_image(request: Request, file: UploadFile = File(...), publ
 from models import Institution, Event, Participant, Team, Submission, Judge, Score, Notification, LeaderboardEntry, Certificate
 from services.email_service import send_notification_email, get_registration_template, get_email_verification_template
 from auth_utils import get_password_hash, verify_password, create_access_token, decode_access_token
-import upgrade_routes
+# from routes import upgrade_routes
 import integration_routes
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -873,7 +873,7 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # --- Include Routers ---
-app.include_router(upgrade_routes.router)
+# app.include_router(upgrade_routes.router)
 app.include_router(submission_routes.router)
 app.include_router(judge_routes.router)
 app.include_router(event_routes.router)
@@ -3732,27 +3732,39 @@ async def get_interview_report(session_id: str):
     }
 
     try:
-        grok_report = grok_json([
-            {"role": "system", "content": "You are an expert interview evaluator. Return valid JSON only."},
-            {"role": "user", "content": report_prompt},
-        ], temperature=0.2, max_tokens=700)
+        import asyncio
+        # Use timeout for grok call - if it takes too long, use fallback
+        try:
+            grok_report = await asyncio.wait_for(
+                asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: grok_json([
+                        {"role": "system", "content": "You are an expert interview evaluator. Return valid JSON only."},
+                        {"role": "user", "content": report_prompt},
+                    ], temperature=0.2, max_tokens=700)
+                ),
+                timeout=10.0  # 10 second timeout
+            )
 
-        # Validate sections more thoroughly
-        grok_sections = grok_report.get("sections")
-        valid_sections = fallback_report["sections"]
-        if isinstance(grok_sections, list) and len(grok_sections) > 0:
-            # Check if each section has required fields
-            if all(isinstance(s, dict) and "label" in s and "score" in s and "feedback" in s for s in grok_sections):
-                valid_sections = grok_sections
+            # Validate sections more thoroughly
+            grok_sections = grok_report.get("sections")
+            valid_sections = fallback_report["sections"]
+            if isinstance(grok_sections, list) and len(grok_sections) > 0:
+                # Check if each section has required fields
+                if all(isinstance(s, dict) and "label" in s and "score" in s and "feedback" in s for s in grok_sections):
+                    valid_sections = grok_sections
 
-        report = {
-            "overall_score": int(grok_report.get("overall_score", fallback_report["overall_score"])),
-            "sections": valid_sections,
-            "detailed_analysis": detailed_analysis,
-            "strengths": grok_report.get("strengths") if isinstance(grok_report.get("strengths"), list) and grok_report.get("strengths") else fallback_report["strengths"],
-            "weaknesses": grok_report.get("weaknesses") if isinstance(grok_report.get("weaknesses"), list) and grok_report.get("weaknesses") else fallback_report["weaknesses"],
-            "verdict": str(grok_report.get("verdict") or fallback_report["verdict"]),
-        }
+            report = {
+                "overall_score": int(grok_report.get("overall_score", fallback_report["overall_score"])),
+                "sections": valid_sections,
+                "detailed_analysis": detailed_analysis,
+                "strengths": grok_report.get("strengths") if isinstance(grok_report.get("strengths"), list) and grok_report.get("strengths") else fallback_report["strengths"],
+                "weaknesses": grok_report.get("weaknesses") if isinstance(grok_report.get("weaknesses"), list) and grok_report.get("weaknesses") else fallback_report["weaknesses"],
+                "verdict": str(grok_report.get("verdict") or fallback_report["verdict"]),
+            }
+        except asyncio.TimeoutError:
+            print(f"Report Generation Timeout (10s) - Using fallback report")
+            report = {**fallback_report, "detailed_analysis": detailed_analysis}
     except Exception as e:
         print(f"Report Generation Error: {e}")
         report = {**fallback_report, "detailed_analysis": detailed_analysis}
