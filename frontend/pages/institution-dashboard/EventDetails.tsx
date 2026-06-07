@@ -207,7 +207,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     const [registrations, setRegistrations] = useState<any[]>([]);
     const [rosterSolos, setRosterSolos] = useState<any[]>([]);
     const [rosterTeams, setRosterTeams] = useState<any[]>([]);
-    const [regStats, setRegStats] = useState({ total: 0, approved: 0, pending: 0, rejected: 0, waitlisted: 0 });
+    const [regStats, setRegStats] = useState({ total: 0, approved: 0, pending: 0, rejected: 0, waitlisted: 0, notified_approved: 0, pending_notification: 0 });
     const [regPage, setRegPage] = useState(1);
     const [regTotalPages, setRegTotalPages] = useState(1);
     const [regSearch, setRegSearch] = useState('');
@@ -243,7 +243,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                 setRosterSolos(data.roster?.solos || []);
                 setRosterTeams(data.roster?.teams || []);
                 setRegistrations(data.roster?.solos || []); // fallback
-                setRegStats(data.stats || { total: 0, approved: 0, pending: 0, rejected: 0, waitlisted: 0 });
+                setRegStats(data.stats || { total: 0, approved: 0, pending: 0, rejected: 0, waitlisted: 0, notified_approved: 0, pending_notification: 0 });
                 setRegTotalPages(1);
             }
         } catch (err) {
@@ -2743,20 +2743,18 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                             <option value="WAITLISTED">Waitlisted</option>
                             <option value="REJECTED">Rejected</option>
                         </select>
-                        {regStats.approved > 0 && (
-                            <button
-                                onClick={handleNotifyApproved}
-                                disabled={notifyingApproved}
-                                className="px-5 py-4 bg-purple-50 hover:bg-[#6C3BFF] hover:text-white border border-purple-100 text-[#6C3BFF] rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 disabled:opacity-40"
-                            >
-                                {notifyingApproved ? (
-                                    <Loader2 size={14} className="animate-spin" />
-                                ) : (
-                                    <Send size={14} />
-                                )}
-                                Notify {regStats.approved} Approved
-                            </button>
-                        )}
+                                <button
+                                    onClick={handleNotifyApproved}
+                                    disabled={notifyingApproved || ((regStats as any).pending_notification === 0)}
+                                    className="px-5 py-4 bg-purple-50 hover:bg-[#6C3BFF] hover:text-white border border-purple-100 text-[#6C3BFF] rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 disabled:opacity-40"
+                                >
+                                    {notifyingApproved ? (
+                                        <Loader2 size={14} className="animate-spin" />
+                                    ) : (
+                                        <Send size={14} />
+                                    )}
+                                    Notify {(regStats as any).pending_notification ?? regStats.approved} Approved
+                                </button>
                     </div>
                 </div>
 
@@ -5168,6 +5166,17 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                             >
                                 Submit Evaluation
                             </button>
+                        </div>
+                    </motion.div>
+                </motion.div>
+            )}
+        </FramerAnimatePresence>
+        </div>
+    );
+};
+
+export default EventDetails;
+     </button>
                         </div>
                     </motion.div>
                 </motion.div>
