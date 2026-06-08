@@ -48,9 +48,9 @@ const PipelineView: React.FC<PipelineViewProps> = ({ eventId, stages }) => {
         setLoading(true);
         try {
             const [pRes, aRes] = await Promise.all([
-                fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/participants`,
+                fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/participants?t=${Date.now()}`,
                     { headers: { ...authHeaders() } }),
-                fetch(`${API_BASE_URL}/api/v1/stages/events/${eventId}/stage-analytics`,
+                fetch(`${API_BASE_URL}/api/v1/stages/events/${eventId}/stage-analytics?t=${Date.now()}`,
                     { headers: { ...authHeaders() } }),
                 ]);
 
