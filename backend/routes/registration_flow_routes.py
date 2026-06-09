@@ -1316,6 +1316,32 @@ async def update_registration_status_admin(
             {"$set": {"status": participant_status, "updated_at": datetime.now(timezone.utc)}}
         )
 
+        # Mirror/Sync into opportunity_applications_col for portal visibility
+        if event.get("event_link_id"):
+            opp = await opportunities_col.find_one({"event_link_id": str(event["event_link_id"])})
+            if opp:
+                opp_id = str(opp.get("_id"))
+                existing_app = await opportunity_applications_col.find_one({
+                    "opportunity_id": opp_id,
+                    "user_id": reg["user_id"]
+                })
+                
+                if not existing_app:
+                    await opportunity_applications_col.insert_one({
+                        "opportunity_id": opp_id,
+                        "user_id": reg["user_id"],
+                        "name": reg.get("profile_snapshot", {}).get("full_name", reg.get("name", "Participant")),
+                        "email": reg.get("profile_snapshot", {}).get("email", reg.get("email", "")),
+                        "applied_at": datetime.now(timezone.utc),
+                        "status": "approved" if new_status == "APPROVED" else new_status.lower(),
+                        "source": "registration_flow_admin_sync"
+                    })
+                else:
+                    await opportunity_applications_col.update_one(
+                        {"_id": existing_app["_id"]},
+                        {"$set": {"status": "approved" if new_status == "APPROVED" else new_status.lower(), "updated_at": datetime.now(timezone.utc)}}
+                    )
+
         return {"status": "success", "message": f"Candidate status updated to {new_status} and propagated."}
 
     except HTTPException:

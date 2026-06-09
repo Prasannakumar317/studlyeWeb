@@ -40,6 +40,7 @@ import {
     ShieldCheck,
     HelpCircle,
     AlertCircle,
+    Copy,
 } from 'lucide-react';
 import { getStatusById, getStatusColor, getStatusLabel } from '../../utils/calendarStatuses';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -181,7 +182,7 @@ const OpportunityDetails: React.FC = () => {
         }
 
         if (allowed.length === 0) {
-            return ['.pdf', '.ppt', '.pptx', '.doc', '.docx', '.png', '.jpg', '.jpeg', '.zip'];
+            return [];
         }
         return allowed;
     };
@@ -1039,6 +1040,36 @@ const OpportunityDetails: React.FC = () => {
         ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     };
 
+    const checkStageAuthorization = (s: any) => {
+        const participantStage = myApplication?.current_stage || '';
+        const regStatusStrLower = (effectiveRegStatus || 'NOT_REGISTERED').toLowerCase();
+        
+        const stages = opportunity?.stages || [];
+        const stageIndex = stages.findIndex((st: any) => st.name === s.name);
+        const participantStageIndex = stages.findIndex((st: any) => st.name === participantStage);
+        
+        const stageVisibility = String(s?.visibility || s?.config?.visibility || '').toLowerCase().trim();
+        const requiresShortlist = stageVisibility.includes('shortlist');
+        const pType = String(opportunity?.participationType || opportunity?.participation_type || '').toLowerCase();
+        const isSoloEvent = pType === 'individual' || pType === 'both';
+        const isSoloParticipant = !myApplication?.team_id || myApplication?.is_solo_participant === true;
+
+        let isAuthorized = false;
+        if (!requiresShortlist) {
+            isAuthorized = regStatusStrLower !== 'not_registered' && regStatusStrLower !== 'rejected';
+        } else {
+            const allowedStatuses = ['approved', 'shortlisted', 'accepted'];
+            if (isSoloEvent && isSoloParticipant) {
+                allowedStatuses.push('registered');
+            }
+            isAuthorized = allowedStatuses.includes(regStatusStrLower);
+        }
+        if (!isAuthorized && participantStageIndex >= stageIndex - 1) {
+            isAuthorized = true;
+        }
+        return isAuthorized;
+    };
+
     const handleStageClick = (s: any) => {
         const stype = s.type?.toUpperCase();
         const sname = s.name?.toUpperCase() || '';
@@ -1103,43 +1134,7 @@ const OpportunityDetails: React.FC = () => {
             return;
         }
 
-        // Determine stage progression dynamically based on admin rules
-        const participantStage = myApplication?.current_stage || '';
-        const regStatusStrLower = regStatusStr.toLowerCase();
-        
-        const stages = opportunity?.stages || [];
-        const stageIndex = stages.findIndex((st: any) => st.name === s.name);
-        const participantStageIndex = stages.findIndex((st: any) => st.name === participantStage);
-        
-        console.log(`[DEBUG] Locking Check: Stage: ${s.name} (Idx: ${stageIndex}), Participant Stage: ${participantStage} (Idx: ${participantStageIndex}), RegStatus: ${regStatusStrLower}`);
-
-        // Dynamically determine required status from stage visibility
-        const stageVisibility = String(s?.visibility || s?.config?.visibility || '').toLowerCase().trim();
-        const requiresShortlist = stageVisibility.includes('shortlist');
-        const pType = String(opportunity?.participationType || opportunity?.participation_type || '').toLowerCase();
-        const isSoloEvent = pType === 'individual' || pType === 'both';
-        const isSoloParticipant = !myApplication?.team_id || myApplication?.is_solo_participant === true;
-
-        let isAuthorized = false;
-        if (!requiresShortlist) {
-            // Public stages: any registered participant can access
-            isAuthorized = regStatusStrLower !== 'not_registered' && regStatusStrLower !== 'rejected';
-        } else {
-            // Shortlisted-only stages: require approved/shortlisted/accepted
-            const allowedStatuses = ['approved', 'shortlisted', 'accepted'];
-            if (isSoloEvent && isSoloParticipant) {
-                allowedStatuses.push('registered');
-            }
-            isAuthorized = allowedStatuses.includes(regStatusStrLower);
-        }
-        // Also unlock if participant has progressed past this stage
-        if (!isAuthorized && participantStageIndex >= stageIndex - 1) {
-            isAuthorized = true;
-        }
-
-        console.log(`[DEBUG] Locking Check: Stage: ${s.name}, visibility: ${stageVisibility}, requiresShortlist: ${requiresShortlist}, RegStatus: ${regStatusStrLower}, Authorized: ${isAuthorized}`);
-
-        if (!isAuthorized) {
+        if (!checkStageAuthorization(s)) {
             alert(`This stage is locked. You must be approved or shortlisted to proceed.`);
             return;
         }
@@ -1864,9 +1859,15 @@ const OpportunityDetails: React.FC = () => {
                                             }
 
                                             const stageStatus = computeStageStatus(s);
-                                            const isReg = (String(s.type || '').toUpperCase() === 'REGISTRATION') || (String(s.name || '').toUpperCase().includes('REGISTER'));
-                                            const isSubmissionStage = (String(s.type || '').toUpperCase() === 'SUBMISSION') || (String(s.name || '').toUpperCase().includes('SUBMISSION'));
-                                            const canAct = (stageStatus === 'active') && (isApplied || isReg || isSubmissionStage || effectiveRegStatus === 'APPROVED');
+                                            const isAuthorized = checkStageAuthorization(s);
+                                            
+                                            // Stage is interactive only if it is the current active stage and authorized
+                                            const canAct = (stageStatus === 'active') && isAuthorized;
+                                            
+                                            // Stage is visible only if it is authorized or already past the start date
+                                            const isVisible = isAuthorized || (s.startDate && new Date(s.startDate) <= new Date());
+                                            
+                                            if (!isVisible) return null;
 
                                             const start = s.startDate || s.start_date;
                                             const end = s.endDate || s.end_date;
@@ -1914,16 +1915,17 @@ const OpportunityDetails: React.FC = () => {
 
                                                     {/* Right content */}
                                                     <div className={`flex-1 bg-white border rounded-2xl p-5 shadow-sm transition-all ${
-                                                        canAct ? 'hover:border-[#6C3BFF]/40 hover:shadow-md cursor-pointer' : 'opacity-80'
+                                                        canAct ? 'hover:border-[#6C3BFF]/40 hover:shadow-md cursor-pointer' : 'opacity-60 cursor-not-allowed'
                                                     }`}
-                                                        onClick={canAct ? () => handleStageClick(s) : undefined}
+                                                        onClick={canAct ? () => handleStageClick(s) : () => !isAuthorized && alert("This stage is locked. Please complete previous stages to unlock.")}
                                                         aria-disabled={!canAct}
                                                     >
                                                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                                                             <div className="flex-1">
                                                                 <div className="flex items-center gap-2 mb-1">
                                                                     <h3 className="font-black text-slate-900 text-lg">{s.name || `Stage ${i + 1}`}</h3>
-                                                                    {stageStatus === 'active' && <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest bg-purple-100 text-purple-700">Live</span>}
+                                                                    {!isAuthorized && <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest bg-rose-100 text-rose-700">Locked</span>}
+                                                                    {stageStatus === 'active' && isAuthorized && <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest bg-purple-100 text-purple-700">Live</span>}
                                                                     {stageStatus === 'completed' && <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest bg-emerald-100 text-emerald-700">Completed</span>}
                                                                     {stageStatus === 'results' && <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest bg-amber-100 text-amber-700">Results</span>}
                                                                 </div>
@@ -3099,14 +3101,14 @@ const OpportunityDetails: React.FC = () => {
                                                                     <div className="text-[10px] text-slate-500 font-bold mt-1">Use an invite code</div>
                                                                 </button>
                                                             </div>
-                                                            
+
                                                             {teamAction === 'create' && (
                                                                 <div className="space-y-2 mt-4">
                                                                     <label className="text-xs font-bold text-slate-700">Team Name <span className="text-rose-500">*</span></label>
                                                                     <input type="text" value={teamName} onChange={e => setTeamName(e.target.value)} placeholder="e.g. Code Ninjas" required className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all" />
                                                                 </div>
                                                             )}
-                                                            
+
                                                             {teamAction === 'join' && (
                                                                 <div className="space-y-2 mt-4">
                                                                     <label className="text-xs font-bold text-slate-700">Team Invite Code <span className="text-rose-500">*</span></label>
@@ -3115,7 +3117,8 @@ const OpportunityDetails: React.FC = () => {
                                                             )}
                                                         </div>
                                                     ) : (
-                                                    currentStep.fields.map((field: any) => {
+                                                        (currentStep.fields || []).map((field: any) => {
+
                                                         const isEmail = field.id === 'email';
                                                         const isPrefilled = Boolean(field.prefilled_value);
                                                         const allowedExts = field.type === 'file' ? getFieldAllowedExtensions(field) : [];
