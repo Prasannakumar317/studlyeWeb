@@ -6,13 +6,19 @@ import { useAuth } from '../AuthContext';
 const JudgeInvitation: React.FC = () => {
     const location = useLocation();
     const navigate = useNavigate();
-    const { user } = useAuth();
+    const { user, role } = useAuth();
     const [busy, setBusy] = useState(false);
     const [notice, setNotice] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
     const [invitationData, setInvitationData] = useState<any>(null);
     const [loadingInvitation, setLoadingInvitation] = useState(true);
 
-    const token = useMemo(() => new URLSearchParams(location.search).get('token') || '', [location.search]);
+    const token = useMemo(() => {
+        const fromSearch = new URLSearchParams(location.search).get('token') || '';
+        if (fromSearch) return fromSearch.split('&')[0].trim();
+        const hash = window.location.hash || '';
+        const q = hash.includes('?') ? hash.split('?')[1] : '';
+        return (new URLSearchParams(q).get('token') || '').split('&')[0].trim();
+    }, [location.search, location.hash]);
     const action = useMemo(() => new URLSearchParams(location.search).get('action') || '', [location.search]);
 
     // Fetch invitation details when token is available
@@ -71,15 +77,20 @@ const JudgeInvitation: React.FC = () => {
             if (!res.ok) throw new Error(body?.detail || 'Failed to update invitation');
             setNotice({ kind: 'ok', text: accept ? 'Invitation accepted! You can now review assigned submissions.' : 'Invitation declined.' });
             if (accept) {
-                // Set flag for auto-detecting judge role in signup
                 localStorage.setItem('pendingJudgeRole', 'true');
                 localStorage.setItem('wasJudgeInvited', 'true');
-                
-                // Redirect to login after acceptance so they can create/access their account
+                const judgeEmail = invitationData?.judge_email || '';
                 setTimeout(() => {
-                    setNotice({ kind: 'ok', text: 'Please create an account or login to access your assigned submissions.' });
-                    navigate(`/login?next=${encodeURIComponent('/institution-dashboard/events')}`);
-                }, 2000);
+                    if (user && role === 'judge') {
+                        navigate('/judge-portal', { replace: true });
+                        return;
+                    }
+                    const loginQs = new URLSearchParams({
+                        next: '/judge-portal',
+                        ...(judgeEmail ? { email: judgeEmail } : {}),
+                    });
+                    navigate(`/login?${loginQs.toString()}`, { replace: true });
+                }, 1500);
             }
         } catch (e: any) {
             setNotice({ kind: 'err', text: e?.message || 'Network error' });
@@ -114,6 +125,17 @@ const JudgeInvitation: React.FC = () => {
                     </div>
                 ) : invitationData ? (
                     <div className="mt-6 space-y-6">
+                        {user && invitationData.judge_email && user.email?.toLowerCase() !== String(invitationData.judge_email).toLowerCase() && (
+                            <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-900">
+                                You are signed in as <strong>{user.email}</strong>, but this invitation was sent to <strong>{invitationData.judge_email}</strong>.
+                                Log out and open this link in a browser where that judge email can sign in, or accept below to record the response for the invited judge.
+                            </div>
+                        )}
+                        {invitationData.status === 'ACCEPTED' && (
+                            <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-sm text-emerald-800 font-semibold">
+                                This invitation was already accepted. Sign in with {invitationData.judge_email} to open the judge portal.
+                            </div>
+                        )}
                         {/* Invitation Details */}
                         <div className="p-6 bg-purple-50 rounded-2xl border border-purple-100">
                             <h2 className="text-lg font-black text-purple-900 mb-4">

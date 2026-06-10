@@ -46,9 +46,12 @@ import {
 } from 'lucide-react';
 
 import { PREMIUM_COMPANIES, Company, DSAQuestion } from '../data/premiumCompaniesData';
+import { useAuth } from '../AuthContext';
+
 const CompanyModules: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { user } = useAuth();
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
   
   // Sidebar state
@@ -69,7 +72,8 @@ const CompanyModules: React.FC = () => {
     const solved = localStorage.getItem('studlyf_solved_questions');
     return solved ? JSON.parse(solved) : [];
   });
-  const [streaks, setStreaks] = useState(5); // mock streak
+  const [streaks, setStreaks] = useState(0);
+  const [progressSynced, setProgressSynced] = useState(false);
 
   // --- Dynamic DSA Visualizer States ---
   const [selectedQuestion, setSelectedQuestion] = useState<DSAQuestion | null>(null);
@@ -134,14 +138,57 @@ const CompanyModules: React.FC = () => {
     }
   }, [location.state]);
 
-  // Sync localStorage
+  const syncProgressToServer = async (payload: { solved_questions?: string[]; saved_questions?: string[]; streaks?: number }) => {
+    const uid = user?.uid || user?.user_id;
+    if (!uid) return;
+    try {
+      await fetch(`${API_BASE_URL}/api/company-prep/progress`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: uid, ...payload }),
+      });
+    } catch {
+      // keep local progress if offline
+    }
+  };
+
+  useEffect(() => {
+    const uid = user?.uid || user?.user_id;
+    if (!uid) return;
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/company-prep/progress?user_id=${encodeURIComponent(uid)}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (cancelled) return;
+        if (Array.isArray(data.saved_questions)) setSavedQuestions(data.saved_questions);
+        if (Array.isArray(data.solved_questions)) setSolvedQuestions(data.solved_questions);
+        if (typeof data.streaks === 'number') setStreaks(data.streaks);
+        setProgressSynced(true);
+      } catch {
+        setProgressSynced(true);
+      }
+    };
+    load();
+    const interval = window.setInterval(load, 15000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [user?.uid, user?.user_id]);
+
   useEffect(() => {
     localStorage.setItem('studlyf_saved_questions', JSON.stringify(savedQuestions));
-  }, [savedQuestions]);
+    if (!progressSynced) return;
+    syncProgressToServer({ saved_questions: savedQuestions });
+  }, [savedQuestions, progressSynced]);
 
   useEffect(() => {
     localStorage.setItem('studlyf_solved_questions', JSON.stringify(solvedQuestions));
-  }, [solvedQuestions]);
+    if (!progressSynced) return;
+    syncProgressToServer({ solved_questions: solvedQuestions });
+  }, [solvedQuestions, progressSynced]);
 
   // Toast helper
   const triggerToast = (msg: string) => {

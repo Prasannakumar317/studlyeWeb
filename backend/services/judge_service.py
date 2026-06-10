@@ -3,16 +3,29 @@ from bson import ObjectId
 from datetime import datetime, timezone
 import secrets
 
+
+def _judge_invitation_url(token: str) -> str:
+    import os
+    base = os.getenv("FRONTEND_URL", "http://localhost:3000").rstrip("/")
+    return f"{base}/#/judge-invitation?token={token}"
+
+
 async def create_judge(data: dict):
     print(f"DEBUG: Creating judge with data: {data}")
     print(f"DEBUG: is_test flag: {data.get('is_test', False)}")
-    
+
     data["created_at"] = datetime.now(timezone.utc).isoformat()
-    data["is_test"] = data.get("is_test", False)  # Ensure is_test flag is set
-    
+    data["is_test"] = data.get("is_test", False)
+    data["status"] = data.get("status") or "INVITED"
+    if not data.get("invitation_token"):
+        data["invitation_token"] = secrets.token_urlsafe(24)
+
+    if data.get("email"):
+        data["email"] = str(data["email"]).strip().lower()
+
     result = await judges_col.insert_one(data)
     data["_id"] = str(result.inserted_id)
-    
+
     print(f"DEBUG: Judge created successfully: {data['_id']} - {data.get('name', 'Unknown')}")
     return data
 
@@ -21,8 +34,222 @@ async def get_all_judges():
     judges = []
     async for doc in cursor:
         doc["_id"] = str(doc["_id"])
+        doc["assignment_count"] = await _count_judge_assignments(doc["_id"])
         judges.append(doc)
     return judges
+
+
+async def send_judge_panel_invitation_email(
+    to_email: str,
+    judge_name: str,
+    *,
+    event_title: str = "Studlyf Events",
+    invitation_token: str = "",
+) -> bool:
+    """Send judge invitation email with accept/decline page link (not the institution admin dashboard)."""
+    from services.email_service import send_notification_email
+
+    email = (to_email or "").strip().lower()
+    if not email:
+        return False
+
+    token = (invitation_token or "").strip()
+    invite_url = _judge_invitation_url(token) if token else _judge_invitation_url(secrets.token_urlsafe(24))
+    accept_url = f"{invite_url}&action=accept"
+    decline_url = f"{invite_url.split('&action=')[0]}&action=decline"
+    safe_name = judge_name or email
+    safe_event = event_title or "your institution's events"
+
+    email_html = f"""
+    <html>
+    <body style="font-family: 'Poppins', sans-serif; background:#f8fafc; color:#0f172a; padding:24px;">
+        <div style="max-width:640px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:20px;padding:32px;">
+            <p style="margin:0 0 12px 0;font-size:18px;font-weight:800;">Hello {safe_name},</p>
+            <p style="margin:0 0 18px 0;line-height:1.7;color:#475569;">
+                You have been invited to evaluate submissions for <strong>{safe_event}</strong> on Studlyf.
+                Please open the link below with <strong>{email}</strong> to accept or decline this invitation.
+            </p>
+            <div style="background:#f5f3ff;border:1px solid #ddd6fe;border-radius:16px;padding:16px;margin:20px 0;">
+                <p style="margin:0;color:#6C3BFF;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;">Your invitation</p>
+                <p style="margin:8px 0 0 0;font-size:14px;color:#0f172a;word-break:break-all;">{invite_url}</p>
+            </div>
+            <div style="display:flex;gap:12px;flex-wrap:wrap;margin:24px 0;">
+                <a href="{accept_url}" style="display:inline-block;background:#059669;color:#fff;text-decoration:none;padding:14px 24px;border-radius:12px;font-weight:800;">Accept Invitation</a>
+                <a href="{decline_url}" style="display:inline-block;background:#f1f5f9;color:#475569;text-decoration:none;padding:14px 24px;border-radius:12px;font-weight:800;">Decline</a>
+            </div>
+            <p style="margin:0;color:#94a3b8;font-size:12px;line-height:1.6;">
+                After accepting, sign in or create an account with <strong>{email}</strong> to access the judge portal.
+            </p>
+        </div>
+    </body>
+    </html>
+    """
+    return await send_notification_email(email, f"Judge Invitation: {safe_event}", email_html)
+
+
+async def get_judge_invitation_details(token: str) -> dict:
+    from db import events_col
+    from urllib.parse import unquote
+
+    tok = unquote((token or "").strip()).split("&")[0].strip()
+    if not tok:
+        raise ValueError("token is required")
+    judge = await judges_col.find_one({"invitation_token": tok})
+    if not judge and len(tok) == 24:
+        try:
+            judge = await judges_col.find_one({"_id": ObjectId(tok)})
+        except Exception:
+            judge = None
+    if not judge:
+        raise LookupError("Invitation not found or expired")
+
+    event_name = "Studlyf Event"
+    event_id = judge.get("event_id")
+    if event_id:
+        try:
+            event = await events_col.find_one({"_id": ObjectId(str(event_id))})
+            if event:
+                event_name = event.get("title") or event.get("name") or event_name
+        except Exception:
+            pass
+
+    return {
+        "judge_name": judge.get("name") or judge.get("full_name") or "Judge",
+        "judge_email": judge.get("email") or "",
+        "event_name": event_name,
+        "event_id": str(event_id) if event_id else None,
+        "expertise": judge.get("expertise"),
+        "status": judge.get("status") or "INVITED",
+        "invitation_sent_at": judge.get("created_at"),
+    }
+
+
+async def respond_judge_invitation(*, token: str = "", judge_email: str = "", event_id: str = "", accept: bool = True) -> dict:
+    """Accept/decline by invitation token (public) or by authenticated judge email."""
+    from db import events_col, users_col
+    from notification_helpers import notify_institution
+
+    judge = None
+    tok = (token or "").strip()
+    email = (judge_email or "").strip().lower()
+
+    if tok:
+        judge = await judges_col.find_one({"invitation_token": tok})
+    elif email:
+        query: dict = {"email": email}
+        if event_id:
+            query["event_id"] = str(event_id)
+        judge = await judges_col.find_one({**query, "status": {"$in": ["INVITED", "invited", "PENDING", "pending"]}})
+        if not judge:
+            judge = await judges_col.find_one(query, sort=[("created_at", -1)])
+
+    if not judge:
+        raise LookupError("Invitation not found")
+
+    judge_id = judge["_id"]
+    judge_email_norm = str(judge.get("email") or email or "").strip().lower()
+    new_status = "ACCEPTED" if accept else "DECLINED"
+    responded_at = datetime.now(timezone.utc).isoformat()
+
+    await judges_col.update_one(
+        {"_id": judge_id},
+        {"$set": {"status": new_status, "responded_at": responded_at}},
+    )
+
+    event_id = judge.get("event_id")
+    event_title = "Event"
+    inst_id = judge.get("institution_id")
+    if event_id:
+        try:
+            event = await events_col.find_one({"_id": ObjectId(str(event_id))})
+            if event:
+                event_title = event.get("title") or event.get("name") or event_title
+                inst_id = inst_id or event.get("institution_id")
+                judges_list = list(event.get("judges") or [])
+                updated = False
+                for i, j in enumerate(judges_list):
+                    je = str(j.get("email") or "").strip().lower()
+                    jid = str(j.get("id") or "")
+                    if je == judge_email_norm or jid == str(judge_id):
+                        judges_list[i] = {**j, "status": new_status, "responded_at": responded_at}
+                        updated = True
+                        break
+                if not updated and judge_email_norm:
+                    judges_list.append({
+                        "id": str(judge_id),
+                        "name": judge.get("name"),
+                        "email": judge_email_norm,
+                        "expertise": judge.get("expertise"),
+                        "status": new_status,
+                        "responded_at": responded_at,
+                    })
+                await events_col.update_one(
+                    {"_id": ObjectId(str(event_id))},
+                    {"$set": {"judges": judges_list}},
+                )
+        except Exception as e:
+            print(f"DEBUG: Event judge status sync failed: {e}")
+
+    if accept and judge_email_norm:
+        await users_col.update_one(
+            {"email": judge_email_norm},
+            {"$set": {"role": "judge"}},
+        )
+
+    judge_name = judge.get("name") or judge_email_norm or "Judge"
+    if inst_id:
+        msg = (
+            f"Judge {judge_name} ({judge_email_norm}) accepted the invitation for \"{event_title}\"."
+            if accept
+            else f"Judge {judge_name} ({judge_email_norm}) declined the invitation for \"{event_title}\"."
+        )
+        await notify_institution(
+            str(inst_id),
+            msg,
+            ntype="judge_invitation_response",
+            title="Judge invitation update",
+            meta={"event_id": str(event_id) if event_id else None, "accept": accept, "judge_email": judge_email_norm},
+        )
+
+    return {
+        "status": "success",
+        "accept": accept,
+        "judge_email": judge_email_norm,
+        "event_id": str(event_id) if event_id else None,
+    }
+
+
+async def get_pending_invitations_for_email(email: str) -> list:
+    from db import events_col
+
+    em = (email or "").strip().lower()
+    if not em:
+        return []
+    cursor = judges_col.find({
+        "email": em,
+        "status": {"$in": ["INVITED", "invited", "PENDING", "pending"]},
+    }).sort("created_at", -1)
+    out = []
+    async for doc in cursor:
+        event_name = "Event"
+        eid = doc.get("event_id")
+        if eid:
+            try:
+                ev = await events_col.find_one({"_id": ObjectId(str(eid))})
+                if ev:
+                    event_name = ev.get("title") or ev.get("name") or event_name
+            except Exception:
+                pass
+        out.append({
+            "_id": str(doc["_id"]),
+            "event_id": str(eid) if eid else None,
+            "event_name": event_name,
+            "expertise": doc.get("expertise"),
+            "status": doc.get("status"),
+            "created_at": doc.get("created_at"),
+            "invitation_token": doc.get("invitation_token"),
+        })
+    return out
 
 def generate_evaluation_token():
     """Generate secure evaluation token"""
@@ -33,6 +260,43 @@ async def assign_judge_to_submission(submission_id: str, judge_id: str):
     return await assign_judge_to_multiple_submissions([submission_id], judge_id)
 
 MAX_ASSIGNMENTS_PER_JUDGE = 20
+
+
+async def assign_round_robin(submission_ids: list, judge_ids: list, max_per_judge: int = MAX_ASSIGNMENTS_PER_JUDGE):
+    """Distribute submissions across judges with a per-judge cap (round-robin)."""
+    subs = [str(s) for s in (submission_ids or []) if s]
+    judges = [str(j) for j in (judge_ids or []) if j]
+    if not subs or not judges:
+        return {"success": False, "error": "submission_ids and judge_ids are required"}
+
+    buckets: dict[str, list[str]] = {jid: [] for jid in judges}
+    judge_load = {jid: await _count_judge_assignments(jid) for jid in judges}
+    skipped: list[str] = []
+
+    for sid in subs:
+        ordered = sorted(judges, key=lambda j: (len(buckets[j]), judge_load.get(j, 0)))
+        placed = False
+        for jid in ordered:
+            if len(buckets[jid]) + judge_load.get(jid, 0) >= max_per_judge:
+                continue
+            buckets[jid].append(sid)
+            placed = True
+            break
+        if not placed:
+            skipped.append(sid)
+
+    results = []
+    for jid, batch in buckets.items():
+        if not batch:
+            continue
+        results.append(await assign_judge_to_multiple_submissions(batch, jid))
+
+    return {
+        "success": True,
+        "assigned": {jid: len(batch) for jid, batch in buckets.items() if batch},
+        "skipped": skipped,
+        "results": results,
+    }
 
 
 async def _count_judge_assignments(judge_id: str) -> int:
@@ -58,13 +322,7 @@ async def assign_judge_to_multiple_submissions(submission_ids: list, judge_id: s
 
     existing_count = await _count_judge_assignments(judge_id)
     new_ids = [str(s) for s in (submission_ids or []) if s]
-    if existing_count + len(new_ids) > MAX_ASSIGNMENTS_PER_JUDGE:
-        remaining = max(0, MAX_ASSIGNMENTS_PER_JUDGE - existing_count)
-        return {
-            "success": False,
-            "error": f"Judge already has {existing_count} assignments. Max {MAX_ASSIGNMENTS_PER_JUDGE} per judge ({remaining} slots left).",
-        }
-    submission_ids = new_ids[: max(0, MAX_ASSIGNMENTS_PER_JUDGE - existing_count)]
+    submission_ids = new_ids
     
     # 1. Get judge details
     judge = await judges_col.find_one({"_id": ObjectId(judge_id)})
@@ -284,10 +542,12 @@ async def assign_judge_to_multiple_submissions(submission_ids: list, judge_id: s
         print(f"Failed to send consolidated email to {judge_email}: {str(e)}")
 
     return {
-        "success": True, 
+        "success": True,
         "email_sent": email_sent,
         "count": len(projects_data),
-        "message": f"Assigned {len(projects_data)} projects. " + ("Email sent successfully." if email_sent else "Email delivery failed (check SMTP/API config).")
+        "assignment_count": existing_count + len(projects_data),
+        "message": f"Assigned {len(projects_data)} projects (judge now has {existing_count + len(projects_data)} total). "
+        + ("Email sent successfully." if email_sent else "Email delivery failed (check SMTP/API config)."),
     }
 
 

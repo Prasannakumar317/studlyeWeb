@@ -199,7 +199,17 @@ def persist_submission_file_fields(
             raw = base64.b64decode(parsed["data"], validate=True)
         except Exception:
             continue
-        ext = _guess_ext_from_bytes(raw, parsed["mime"], field.get("accept_types") or [])
+        accept = field.get("accept_types") or []
+        label_lower = str(field.get("label") or fid).lower()
+        ext = _guess_ext_from_bytes(raw, parsed["mime"], accept)
+        if ext in ("zip", "bin") and any("ppt" in str(a).lower() for a in accept):
+            ext = "pptx"
+        elif ext in ("zip", "bin") and any("pdf" in str(a).lower() for a in accept):
+            ext = "pdf"
+        elif "ppt" in label_lower and ext == "zip":
+            ext = "pptx"
+        elif "pdf" in label_lower and ext == "bin":
+            ext = "pdf"
         rel = f"submissions/{event_id}/{storage_key}/{fid}.{ext}"
         dest = upload_root / rel
         dest.parent.mkdir(parents=True, exist_ok=True)

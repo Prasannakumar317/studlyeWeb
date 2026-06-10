@@ -437,6 +437,8 @@ async def get_event_dashboard_data(
     import logging
     logger = logging.getLogger("event_routes")
 
+    from db import opportunities_col
+
     event = await assert_institution_owns_event(event_id, user)
     resolved = await resolve_event_id(event_id)
     event_ids = list(dict.fromkeys([
@@ -444,9 +446,31 @@ async def get_event_dashboard_data(
         str(resolved),
         str(event.get("_id", "")),
         str(event.get("event_id", "")),
+        str(event.get("event_link_id", "")),
     ]))
     event_ids = [eid for eid in event_ids if eid]
-    event_filter = {"event_id": {"$in": event_ids}}
+    opp_or = []
+    for eid in list(event_ids):
+        opp_or.append({"event_link_id": eid})
+        if ObjectId.is_valid(eid):
+            try:
+                opp_or.append({"_id": ObjectId(eid)})
+            except Exception:
+                pass
+    if opp_or:
+        async for opp in opportunities_col.find({"$or": opp_or}, {"_id": 1, "event_link_id": 1}):
+            for key in ("_id", "event_link_id"):
+                val = opp.get(key)
+                if val and str(val) not in event_ids:
+                    event_ids.append(str(val))
+    event_id_in: list = list(event_ids)
+    for eid in event_ids:
+        if ObjectId.is_valid(eid):
+            try:
+                event_id_in.append(ObjectId(eid))
+            except Exception:
+                pass
+    event_filter = {"event_id": {"$in": event_id_in}}
     list_cap = limit if limit > 0 else None
 
     async def _load(cursor):

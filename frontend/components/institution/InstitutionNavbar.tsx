@@ -200,6 +200,7 @@ const InstitutionNavbar: React.FC<{ refreshKey?: number, onNavigate?: (tab: stri
                 
                 if (res.ok) {
                     const data = await res.json();
+                    if (!data.logo_url && data.logo) data.logo_url = data.logo;
                     setProfile(data);
                     setImgError(false);
                 } else {
@@ -235,6 +236,12 @@ const InstitutionNavbar: React.FC<{ refreshKey?: number, onNavigate?: (tab: stri
         };
         fetchPlan();
     }, [institutionId, role, refreshKey]);
+
+    const resolveMediaUrl = (url?: string | null) => {
+        if (!url) return '';
+        if (url.startsWith('/api/')) return `${API_BASE_URL}${url}`;
+        return url;
+    };
 
     const handleLogout = async () => {
         await logout();
@@ -461,7 +468,19 @@ const InstitutionNavbar: React.FC<{ refreshKey?: number, onNavigate?: (tab: stri
                         {/* Logo replaces the 'N' */}
                         <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center text-[#6C3BFF] font-black shadow-lg overflow-hidden shrink-0 border border-white/20 text-xs">
                              {profile?.logo_url && !imgError ? (
-                                <img src={profile.logo_url} className="w-full h-full object-cover" onError={() => setImgError(true)} />
+                                <img
+                                    src={resolveMediaUrl(profile.logo_url)}
+                                    className="w-full h-full object-cover"
+                                    onError={() => {
+                                        const mediaFallback = `/api/v1/institution/profile/${institutionId}/media/logo`;
+                                        if (profile.logo_url !== mediaFallback && !profile._mediaFallback) {
+                                            setProfile((p: any) => ({ ...p, logo_url: mediaFallback, _mediaFallback: true }));
+                                            setImgError(false);
+                                        } else {
+                                            setImgError(true);
+                                        }
+                                    }}
+                                />
                              ) : (
                                 displayName.charAt(0).toUpperCase()
                              )}

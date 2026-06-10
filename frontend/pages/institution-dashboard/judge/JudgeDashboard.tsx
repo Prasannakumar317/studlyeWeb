@@ -22,7 +22,7 @@ const JudgeDashboard: React.FC = () => {
     const [searchQuery, setSearchQuery] = useState('');
     
     // Invitation & Filtering State
-    const [inviteEventId, setInviteEventId] = useState('');
+    const [pendingInvites, setPendingInvites] = useState<any[]>([]);
     const [inviteBusy, setInviteBusy] = useState(false);
     const [eventFilter, setEventFilter] = useState('');
     
@@ -77,26 +77,45 @@ const JudgeDashboard: React.FC = () => {
         }
     };
 
+    const fetchPendingInvites = async () => {
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/v1/institution/judge/my-invitations`, {
+                headers: { ...authHeaders() },
+            });
+            if (res.ok) {
+                setPendingInvites(await res.json());
+            }
+        } catch {
+            /* non-fatal */
+        }
+    };
+
     useEffect(() => {
         fetchData();
+        fetchPendingInvites();
     }, [eventFilter]);
 
-    const respondInvitation = async (accept: boolean) => {
-        const eid = inviteEventId.trim();
-        if (!eid) { alert('Enter the event ID from your invitation email.'); return; }
+    const respondInvitation = async (accept: boolean, invite: { event_id?: string; invitation_token?: string }) => {
         setInviteBusy(true);
         try {
             const res = await fetch(`${API_BASE_URL}/api/v1/institution/judge/respond-invitation`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', ...authHeaders() },
-                body: JSON.stringify({ event_id: eid, accept }),
+                body: JSON.stringify({
+                    accept,
+                    event_id: invite.event_id,
+                    token: invite.invitation_token,
+                }),
             });
             if (res.ok) {
-                alert(accept ? 'Invitation accepted.' : 'Invitation declined.');
-                setInviteEventId('');
+                alert(accept ? 'Invitation accepted. The institution admin has been notified.' : 'Invitation declined.');
+                fetchPendingInvites();
                 fetchData();
+            } else {
+                const err = await res.json().catch(() => ({}));
+                alert(err.detail || 'No invitation found for your account email.');
             }
-        } catch (e) {
+        } catch {
             alert('Network error.');
         } finally {
             setInviteBusy(false);
@@ -192,25 +211,40 @@ const JudgeDashboard: React.FC = () => {
                     </p>
                 </div>
                 
-                <div className="flex items-center gap-4">
-                    <div className="rounded-2xl border border-white/10 bg-white/5 p-1 flex shadow-2xl">
-                        <input 
-                            type="text" 
-                            placeholder="Quick Invitation (Event ID)"
-                            value={inviteEventId}
-                            onChange={(e) => setInviteEventId(e.target.value)}
-                            className="bg-transparent border-none text-[10px] text-white px-4 py-2 w-48 focus:ring-0 placeholder:text-slate-600 font-bold uppercase tracking-widest"
-                        />
-                        <button 
-                            disabled={inviteBusy}
-                            onClick={() => respondInvitation(true)}
-                            className="px-4 py-2 bg-emerald-600 text-white text-[9px] font-black uppercase tracking-widest rounded-xl hover:bg-emerald-500 transition-all disabled:opacity-50 shadow-lg shadow-emerald-900/20"
-                        >
-                            Accept
-                        </button>
-                    </div>
-                </div>
             </div>
+
+            {pendingInvites.length > 0 && (
+                <div className="space-y-4">
+                    <h2 className="text-sm font-black text-amber-400 uppercase tracking-widest">Pending Invitations</h2>
+                    {pendingInvites.map((inv) => (
+                        <div key={inv._id} className="p-6 rounded-[2rem] border border-amber-500/30 bg-amber-500/10 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                            <div>
+                                <p className="text-lg font-black text-white">{inv.event_name || 'Event invitation'}</p>
+                                <p className="text-xs text-amber-200/80 font-bold mt-1">
+                                    Invited {inv.created_at ? new Date(inv.created_at).toLocaleDateString() : 'recently'}
+                                    {inv.expertise ? ` • ${inv.expertise}` : ''}
+                                </p>
+                            </div>
+                            <div className="flex gap-3">
+                                <button
+                                    disabled={inviteBusy}
+                                    onClick={() => respondInvitation(true, inv)}
+                                    className="px-5 py-3 bg-emerald-600 text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-emerald-500 disabled:opacity-50"
+                                >
+                                    Accept
+                                </button>
+                                <button
+                                    disabled={inviteBusy}
+                                    onClick={() => respondInvitation(false, inv)}
+                                    className="px-5 py-3 bg-white/10 text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-white/20 disabled:opacity-50"
+                                >
+                                    Decline
+                                </button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
 
             {/* Stats Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">

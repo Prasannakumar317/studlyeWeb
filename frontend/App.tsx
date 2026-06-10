@@ -156,12 +156,28 @@ const App: React.FC = () => {
 
     console.log('[AuthDebug] Role:', role, 'Path:', pathname);
 
-    // Allow evaluation pages
-    if (pathname.startsWith('/evaluate/')) {
-      console.log(
-        '[EvaluationAccess] Public evaluation route:',
-        pathname
-      );
+    // Public evaluation + judge invitation (no role redirect)
+    if (pathname.startsWith('/evaluate/') || pathname.startsWith('/judge-invitation')) {
+      return;
+    }
+
+    // Legacy broken invite link → correct judge invitation flow
+    if (pathname === '/institution/judge' || pathname.startsWith('/institution/judge')) {
+      const token = new URLSearchParams(window.location.hash.split('?')[1] || '').get('token')
+        || new URLSearchParams(window.location.search).get('token');
+      if (token) {
+        navigate(`/judge-invitation?token=${encodeURIComponent(token)}`, { replace: true });
+        return;
+      }
+      if (user && role === 'judge') {
+        navigate('/judge-portal', { replace: true });
+        return;
+      }
+      if (user && role === 'institution') {
+        navigate('/institution-dashboard/judges', { replace: true });
+        return;
+      }
+      navigate('/login?next=' + encodeURIComponent('/judge-portal'), { replace: true });
       return;
     }
 
@@ -433,6 +449,7 @@ const App: React.FC = () => {
             <Route path="/login" element={<PublicRoute><UnifiedAuth /></PublicRoute>} />
             <Route path="/signup" element={<PublicRoute><UnifiedAuth /></PublicRoute>} />
             <Route path="/judge-invitation" element={<JudgeInvitation />} />
+            <Route path="/institution/judge" element={<JudgeInvitation />} />
             <Route path="/ai-tools" element={<AITools />} />
             <Route path="/studott" element={<StudOTT />} />
             <Route path="/studhub" element={<StudHub />} />

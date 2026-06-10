@@ -876,6 +876,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # app.include_router(upgrade_routes.router)
 app.include_router(submission_routes.router)
 app.include_router(judge_routes.router)
+app.include_router(judge_routes.portal_router)
 app.include_router(event_routes.router)
 app.include_router(dashboard_routes.router)
 app.include_router(integration_routes.router, prefix="/api/v1/institution")
@@ -1629,6 +1630,46 @@ async def update_progress(data: dict):
     return {"status": "updated", "requirements_met": False, "new_badges": nb}
 
     return {"status": "updated"}
+
+
+@app.get("/api/company-prep/progress")
+async def get_company_prep_progress(user_id: str):
+    if not user_id:
+        raise HTTPException(status_code=400, detail="user_id is required")
+    doc = await progress_col.find_one({"user_id": user_id, "course_id": "company-prep"})
+    if not doc:
+        return {"solved_questions": [], "saved_questions": [], "streaks": 0, "updated_at": None}
+    return {
+        "solved_questions": doc.get("solved_questions") or [],
+        "saved_questions": doc.get("saved_questions") or [],
+        "streaks": int(doc.get("streaks") or 0),
+        "updated_at": doc.get("updated_at"),
+    }
+
+
+@app.post("/api/company-prep/progress")
+async def update_company_prep_progress(data: dict):
+    user_id = data.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=400, detail="user_id is required")
+    update_doc = {
+        "user_id": user_id,
+        "course_id": "company-prep",
+        "updated_at": datetime.utcnow().isoformat(),
+    }
+    if "solved_questions" in data:
+        update_doc["solved_questions"] = data.get("solved_questions") or []
+    if "saved_questions" in data:
+        update_doc["saved_questions"] = data.get("saved_questions") or []
+    if "streaks" in data:
+        update_doc["streaks"] = int(data.get("streaks") or 0)
+    await progress_col.update_one(
+        {"user_id": user_id, "course_id": "company-prep"},
+        {"$set": update_doc},
+        upsert=True,
+    )
+    return {"status": "updated", "updated_at": update_doc["updated_at"]}
+
 
 @app.post("/api/quiz/submit")
 async def submit_quiz(data: dict):

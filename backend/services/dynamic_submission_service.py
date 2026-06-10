@@ -428,16 +428,46 @@ async def submit_stage_data(
             print(f"[WARN] Failed to sync opportunity application: {e}")
 
         try:
-            title = f"Submission received: {target_stage.get('name')}"
+            stage_label = target_stage.get("name") or "Submission"
+            event_title = event.get("title") or event.get("name") or "the event"
+            summary_bits: list[str] = []
+            for field in fields:
+                fid = str(field.get("field_id") or "")
+                if not fid:
+                    continue
+                val = form_data.get(fid)
+                flabel = str(field.get("label") or fid).strip()
+                ftype = str(field.get("field_type") or "").lower()
+                if ftype == "file":
+                    if isinstance(val, dict) and val.get("_stored_file"):
+                        summary_bits.append(f"{flabel}: {val.get('filename', 'file attached')}")
+                    elif isinstance(val, str) and val.startswith("data:"):
+                        summary_bits.append(f"{flabel}: file attached")
+                elif isinstance(val, str) and val.strip() and not val.startswith("data:"):
+                    snippet = val.strip()
+                    if len(snippet) > 120:
+                        snippet = snippet[:117] + "..."
+                    summary_bits.append(f"{flabel}: {snippet}")
+            summary_line = "; ".join(summary_bits[:4])
+            title = f"Submitted: {stage_label}"
             message = (
-                f"Your submission for '{target_stage.get('name')}' has been received. "
-                "You can view it in My Applications or on the Event page."
+                f"Your submission for '{stage_label}' in {event_title} was received."
+                + (f" {summary_line}." if summary_line else " You can track it under My Applications.")
             )
             opp = await opportunities_col.find_one({"event_link_id": str(event_id)})
+            if not opp:
+                for eid in await _event_id_variants(event_id):
+                    opp = await opportunities_col.find_one({"event_link_id": eid})
+                    if opp:
+                        break
             meta = {
                 "stage_id": stage_id,
+                "stage_name": stage_label,
                 "event_id": str(event_id),
+                "event_title": event_title,
                 "opportunity_id": str(opp["_id"]) if opp else None,
+                "submission_id": submission_id,
+                "summary": summary_line,
             }
             await notification_service.create_notification(
                 user_id=str(user_id),

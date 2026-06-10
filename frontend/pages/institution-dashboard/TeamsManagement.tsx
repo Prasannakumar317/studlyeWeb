@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { API_BASE_URL, authHeaders } from '../../apiConfig';
 import { Trash2, Users, Search, RefreshCw, X, Info } from 'lucide-react';
-import { useDashboardData } from '../../contexts/DashboardDataContext';
+import { useDashboardCache, useDashboardData } from '../../contexts/DashboardDataContext';
 
 type TeamMember = {
     user_id?: string;
@@ -42,9 +42,13 @@ const TeamsManagement: React.FC<TeamsManagementProps> = ({ institutionId }) => {
     const [filterStatus, setFilterStatus] = useState('All');
     const [teams, setTeams] = useState<Team[]>([]);
     const [loading, setLoading] = useState(false);
+    const [refreshing, setRefreshing] = useState(false);
+    const eventsCacheKey = `events_list_${institutionId}`;
+
+    const { setCacheData } = useDashboardCache();
 
     const fetchEvents = useCallback(async () => {
-        const res = await fetch(`${API_BASE_URL}/api/v1/institution/events-db-only/${institutionId}`, {
+        const res = await fetch(`${API_BASE_URL}/api/v1/institution/events-db-only/${institutionId}?_=${Date.now()}`, {
             headers: { ...authHeaders() },
         });
         if (!res.ok) throw new Error('Failed to fetch events');
@@ -52,18 +56,19 @@ const TeamsManagement: React.FC<TeamsManagementProps> = ({ institutionId }) => {
         return data || [];
     }, [institutionId]);
 
-    const { data: events = [] } = useDashboardData<Event[]>('events_list_' + institutionId, fetchEvents);
+    const { data: events = [] } = useDashboardData<Event[]>(eventsCacheKey, fetchEvents);
 
-    const fetchTeams = useCallback(async () => {
+    const fetchTeams = useCallback(async (opts?: { silent?: boolean }) => {
         if (!selectedEventId) {
             setTeams([]);
             return;
         }
-        setLoading(true);
+        if (!opts?.silent) setLoading(true);
         try {
-            const res = await fetch(`${API_BASE_URL}/api/v1/institution/events/${selectedEventId}/teams`, {
-                headers: { ...authHeaders() },
-            });
+            const res = await fetch(
+                `${API_BASE_URL}/api/v1/institution/events/${selectedEventId}/teams?_=${Date.now()}`,
+                { headers: { ...authHeaders() }, cache: 'no-store' },
+            );
             if (res.ok) {
                 const data = await res.json();
                 setTeams(Array.isArray(data) ? data : []);
@@ -71,9 +76,22 @@ const TeamsManagement: React.FC<TeamsManagementProps> = ({ institutionId }) => {
         } catch (err) {
             console.error('Failed to fetch teams:', err);
         } finally {
-            setLoading(false);
+            if (!opts?.silent) setLoading(false);
         }
     }, [selectedEventId]);
+
+    const handleRefresh = useCallback(async () => {
+        setRefreshing(true);
+        try {
+            const freshEvents = await fetchEvents();
+            setCacheData(eventsCacheKey, freshEvents);
+            await fetchTeams({ silent: true });
+        } catch (err) {
+            console.error('Failed to refresh teams data:', err);
+        } finally {
+            setRefreshing(false);
+        }
+    }, [fetchEvents, fetchTeams, setCacheData, eventsCacheKey]);
 
     useEffect(() => {
         fetchTeams();
@@ -139,11 +157,14 @@ const TeamsManagement: React.FC<TeamsManagementProps> = ({ institutionId }) => {
                     <h1 className="text-3xl font-black text-slate-900 tracking-tight">Teams Management</h1>
                     <p className="text-slate-500 font-medium mt-1">Manage event teams and approvals</p>
                 </div>
-                <button 
-                    onClick={fetchTeams}
-                    className="p-3 bg-white border border-slate-200 text-slate-400 hover:text-[#6C3BFF] hover:border-[#6C3BFF] rounded-2xl transition-all shadow-sm"
+                <button
+                    type="button"
+                    onClick={handleRefresh}
+                    disabled={refreshing || loading}
+                    title="Refresh events and teams"
+                    className="p-3 bg-white border border-slate-200 text-slate-400 hover:text-[#6C3BFF] hover:border-[#6C3BFF] rounded-2xl transition-all shadow-sm disabled:opacity-60"
                 >
-                    <RefreshCw size={20} className={loading ? 'animate-spin' : ''} />
+                    <RefreshCw size={20} className={refreshing || loading ? 'animate-spin' : ''} />
                 </button>
             </div>
 

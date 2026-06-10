@@ -51,7 +51,12 @@ const JudgeManagement: React.FC = () => {
             });
 
             if (res.ok) {
-                alert('Judge invitation sent successfully!');
+                const result = await res.json();
+                if (result.email_sent === false) {
+                    alert('Judge saved, but the invitation email could not be sent. Check SMTP settings or share the judge dashboard link manually.');
+                } else {
+                    alert('Judge invitation sent successfully!');
+                }
                 setIsInviteModalOpen(false);
                 fetchJudges();
             } else {
@@ -180,9 +185,12 @@ const JudgeManagement: React.FC = () => {
                                             {getJudgeStatusLabel(judge.status || 'pending')}
                                         </span>
                                     </div>
-                                    <div className="text-[10px] font-bold text-slate-300">
-                                        Added {new Date(judge.created_at).toLocaleDateString()}
-                                    </div>
+                                    <span className="text-[10px] font-black text-purple-600 bg-purple-50 px-2 py-1 rounded-lg">
+                                        {judge.assignment_count ?? 0} assigned
+                                    </span>
+                                </div>
+                                <div className="text-[10px] font-bold text-slate-300 text-right">
+                                    Added {judge.created_at ? new Date(judge.created_at).toLocaleDateString() : '—'}
                                 </div>
                             </div>
                         </motion.div>

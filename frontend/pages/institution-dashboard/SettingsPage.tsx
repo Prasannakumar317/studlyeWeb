@@ -154,12 +154,16 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ institutionId, onProfileUpd
                 }); 
                 if (res.ok && isMounted) {
                     const data = await res.json();
+                    const resolveMedia = (url?: string) => {
+                        if (!url) return '';
+                        if (url.startsWith('/api/')) return `${API_BASE_URL}${url}`;
+                        return url;
+                    };
                     setProfile(prev => ({
                         ...prev,
                         ...data,
-                        // Ensure images are mapped even if backend uses CamelCase
-                        logo_url: data.logo_url || data.logoUrl || prev.logo_url,
-                        banner_url: data.banner_url || data.bannerUrl || prev.banner_url,
+                        logo_url: resolveMedia(data.logo_url || data.logoUrl) || prev.logo_url,
+                        banner_url: resolveMedia(data.banner_url || data.bannerUrl) || prev.banner_url,
                         notifications: data.notifications || prev.notifications
                     }));
                 } else if (isMounted) {
@@ -388,7 +392,11 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ institutionId, onProfileUpd
                 alert('Upload failed: ' + (data.detail || 'Unknown error'));
                 return;
             }
-            setProfile(prev => ({ ...prev, [field]: data.url }));
+            const uploadedUrl = data.url?.startsWith('/api/')
+                ? `${API_BASE_URL}${data.url}`
+                : data.url;
+            setProfile(prev => ({ ...prev, [field]: uploadedUrl }));
+            setImgErrors(prev => ({ ...prev, logo: field === 'logo_url' ? false : prev.logo, banner: field === 'banner_url' ? false : prev.banner }));
         } catch (err) {
             try { console.error('[MediaUpload] network error', err instanceof Error ? err.message : String(err)); } catch (_) {}
             alert('Network error during upload.');

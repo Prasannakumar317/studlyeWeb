@@ -24,6 +24,14 @@ class NotificationService:
     ):
         """Create a new notification"""
         
+        category = "general"
+        if notification_type in ("submission", "submission_received", "stage_submission"):
+            category = "submission"
+        elif notification_type in ("judge", "evaluation", "judge_assignment"):
+            category = "judge"
+        elif notification_type in ("event", "stage", "PHASE_ADVANCEMENT"):
+            category = "event"
+
         notification_doc = {
             "user_id": user_id,
             "type": notification_type,
@@ -31,8 +39,8 @@ class NotificationService:
             "message": message,
             "is_read": False,
             "created_at": datetime.now(timezone.utc).isoformat(),
-            "priority": "medium",  # high, medium, low
-            "category": "general"  # general, judge, event, system
+            "priority": "medium",
+            "category": category,
         }
         
         # Add optional fields (never tag user notifications with institution_id — that leaks into institution dashboard)

@@ -77,6 +77,15 @@ import HackathonEventPackage from './components/HackathonEventPackage';
 import { IEvent, IParticipant, ITeam, IStage, ISubmission } from '../../types/event';
 import { useAuth } from '../../AuthContext';
 import { sanitizePresentationHtml } from '../../utils/text';
+import FilePreviewPanel from '../../components/FilePreviewPanel';
+import {
+    buildPreviewFilename,
+    cacheSubmissionFile,
+    getCachedSubmissionFile,
+    getFileTypeBadge,
+    mimeToExtension,
+} from '../../utils/submissionFilePreview';
+import { invalidateEventDetailsCache, readEventDetailsCache, writeEventDetailsCache } from '../../utils/eventDetailsCache';
 
 interface EventDetailsProps {
     eventId: string | null;
@@ -127,6 +136,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     const [bannerError, setBannerError] = useState(false);
     const prevLogoUrl = useRef<string | undefined>(undefined);
     const prevBannerUrl = useRef<string | undefined>(undefined);
+    const dashboardInflightRef = useRef<Promise<any> | null>(null);
     useEffect(() => {
         if (event?.logo_url && event.logo_url !== prevLogoUrl.current) {
             prevLogoUrl.current = event.logo_url;
@@ -145,12 +155,14 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     const [criteria, setCriteria] = useState<any[]>([]);
     const [bundleData, setBundleData] = useState<any>(null);
     const [prizeDistribution, setPrizeDistribution] = useState<any[]>([]);
-    const [threshold, setThreshold] = useState(80);
-    const [waitlistThreshold, setWaitlistThreshold] = useState(65);
-    const [rejectThreshold, setRejectThreshold] = useState(65);
-    const [debouncedThreshold, setDebouncedThreshold] = useState(80);
-    const [debouncedWaitlist, setDebouncedWaitlist] = useState(65);
-    const [debouncedReject, setDebouncedReject] = useState(65);
+    const [threshold, setThreshold] = useState<number | null>(null);
+    const [waitlistThreshold, setWaitlistThreshold] = useState<number | null>(null);
+    const [rejectThreshold, setRejectThreshold] = useState<number | null>(null);
+    const [debouncedThreshold, setDebouncedThreshold] = useState<number | null>(null);
+    const [debouncedWaitlist, setDebouncedWaitlist] = useState<number | null>(null);
+    const [debouncedReject, setDebouncedReject] = useState<number | null>(null);
+    const [thresholdsDirty, setThresholdsDirty] = useState(false);
+    const thresholdsHydratedRef = useRef(false);
     const [bundleTab, setBundleTab] = useState<string>('shortlisted');
     const [bundleNotifyFilter, setBundleNotifyFilter] = useState<'ALL' | 'APPROVED_UNNOTIFIED' | 'APPROVED_NOTIFIED'>('ALL');
     const [selectedSubmissionStageId, setSelectedSubmissionStageId] = useState('');
@@ -168,7 +180,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     const [showSaveSuccess, setShowSaveSuccess] = useState(false);
     const [quizzes, setQuizzes] = useState<any[]>([]);
     const [isQuizModalOpen, setIsQuizModalOpen] = useState(false);
-    const [previewAsset, setPreviewAsset] = useState<{ url: string; filename: string; type: string } | null>(null);
+    const [previewAsset, setPreviewAsset] = useState<{ url: string; filename: string; type: string; loading?: boolean; mime?: string } | null>(null);
     const [isCreatingQuiz, setIsCreatingQuiz] = useState(false);
     const [quizStageId, setQuizStageId] = useState<string | null>(null);
     const [reviewQuiz, setReviewQuiz] = useState<{ quizId: string; quizTitle: string; stageName: string } | null>(null);
@@ -499,27 +511,42 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
         }
     };
 
+    const parseContentDispositionFilename = (header: string | null, fallback: string) => {
+        if (!header) return fallback;
+        const match = header.match(/filename\*?=(?:UTF-8''|")?([^";]+)/i);
+        return match?.[1]?.trim() || fallback;
+    };
+
     const openStageSubmissionFile = async (submissionId: string, fieldId: string, filenameHint?: string) => {
         if (!eventId) return;
+        const cacheKey = `${eventId}:${submissionId}:${fieldId}`;
+        const cached = getCachedSubmissionFile(cacheKey);
+        if (cached) {
+            setPreviewAsset({ url: cached.url, filename: cached.filename, type: 'file', mime: cached.mime });
+            return;
+        }
+        const placeholderName = filenameHint || fieldId || 'Opening file…';
+        setPreviewAsset({ url: '', filename: placeholderName, type: 'file', loading: true });
         try {
             const res = await fetch(
                 `${API_BASE_URL}/api/v1/institution/events/${eventId}/stage-submissions/${submissionId}/file/${encodeURIComponent(fieldId)}`,
-                { headers: authHeaders() },
+                { headers: { ...authHeaders() }, cache: 'no-store' },
             );
             if (!res.ok) {
+                setPreviewAsset(null);
                 alert('Could not open file. It may have been removed or you may not have access.');
                 return;
             }
             const blob = await res.blob();
-            const url = window.URL.createObjectURL(blob);
             const mime = blob.type || 'application/octet-stream';
-            const ext = mime.split('/')[1] || 'bin';
-            setPreviewAsset({
-                url,
-                filename: filenameHint || `Attachment.${ext}`,
-                type: 'file',
-            });
+            const ext = mimeToExtension(mime);
+            const fallbackName = filenameHint?.includes('.') ? filenameHint : buildPreviewFilename(filenameHint || fieldId, mime, filenameHint);
+            const filename = parseContentDispositionFilename(res.headers.get('Content-Disposition'), fallbackName || `Attachment.${ext}`);
+            const url = window.URL.createObjectURL(blob);
+            cacheSubmissionFile(cacheKey, { url, filename, mime });
+            setPreviewAsset({ url, filename, type: 'file', mime });
         } catch {
+            setPreviewAsset(null);
             alert('Network error while opening file.');
         }
     };
@@ -658,6 +685,37 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     }, [hasUnsavedChanges, stages, criteria]);
 
     useEffect(() => {
+        if (!eventId || activeTab !== 'submissions' || submissions.length > 0) return;
+        let cancelled = false;
+        (async () => {
+            try {
+                const res = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/submissions`, {
+                    headers: { ...authHeaders() },
+                });
+                if (!res.ok || cancelled) return;
+                const allSubs = await res.json();
+                if (!Array.isArray(allSubs) || cancelled) return;
+                const stageSubs = allSubs.filter((s: any) => s.source === 'stage_deliverable').map((ss: any) => ({
+                    ...ss,
+                    _sourceType: 'stage',
+                    source: 'stage_deliverable',
+                    teamName: ss.team_name || ss.data?.team_display_name || '',
+                    team_name: ss.team_name || ss.data?.team_display_name || '',
+                    user_name: ss.data?.name || ss.data?.full_name || '',
+                    submitted_at: ss.submitted_at || ss.last_updated_at,
+                }));
+                const legacySubs = allSubs.filter((s: any) => s.source !== 'stage_deliverable');
+                if (stageSubs.length > 0 || legacySubs.length > 0) {
+                    setSubmissions([...legacySubs, ...stageSubs]);
+                }
+            } catch {
+                // non-fatal
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [eventId, activeTab, submissions.length, refreshCounter]);
+
+    useEffect(() => {
         if (!eventId || activeTab !== 'submissions') return;
         const fetchHackathonSubs = async () => {
             try {
@@ -681,10 +739,38 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
         return s.replace(/_/g, ' ').toUpperCase();
     };
 
+    const applyEvaluationThresholds = useCallback((eth: any) => {
+        const shortlist = typeof eth?.shortlist_min === 'number' ? eth.shortlist_min : 80;
+        const waitlist = typeof eth?.waitlist_min === 'number' ? eth.waitlist_min : Math.max(shortlist - 15, Math.round(shortlist * 0.75));
+        const reject = typeof eth?.reject_below === 'number' ? eth.reject_below : waitlist;
+        setThreshold(shortlist);
+        setWaitlistThreshold(waitlist);
+        setRejectThreshold(reject);
+        setDebouncedThreshold(shortlist);
+        setDebouncedWaitlist(waitlist);
+        setDebouncedReject(reject);
+        setThresholdsDirty(false);
+        thresholdsHydratedRef.current = true;
+    }, []);
+
     useEffect(() => {
         const fetchData = async () => {
             if (!eventId) return;
-            setLoading(true);
+
+            const cached = readEventDetailsCache(eventId);
+            if (cached) {
+                setEvent(cached.event);
+                setStages(cached.stages);
+                setCriteria(cached.criteria);
+                setParticipants(cached.participants);
+                setQuizzes(cached.quizzes);
+                setSubmissions(cached.submissions);
+                if (cached.teams?.length) setTeams(cached.teams);
+                applyEvaluationThresholds(cached.event?.evaluation_thresholds || {});
+                setLoading(false);
+            } else {
+                setLoading(true);
+            }
 
             try {
                 // Step 1: Fetch basic event details to get the institution ID
@@ -695,36 +781,55 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                 setEvent(eventData);
                 setStages(Array.isArray(eventData.stages) ? eventData.stages : []);
                 setCriteria(eventData.judging_criteria || []);
-                const eth = eventData.evaluation_thresholds || {};
-                if (typeof eth.shortlist_min === 'number' && eth.shortlist_min > 0) {
-                    setThreshold(eth.shortlist_min);
-                    setDebouncedThreshold(eth.shortlist_min);
-                }
-                if (typeof eth.waitlist_min === 'number') {
-                    setWaitlistThreshold(eth.waitlist_min);
-                    setDebouncedWaitlist(eth.waitlist_min);
-                }
-                if (typeof eth.reject_below === 'number') {
-                    setRejectThreshold(eth.reject_below);
-                    setDebouncedReject(eth.reject_below);
-                }
+                applyEvaluationThresholds(eventData.evaluation_thresholds || {});
                 const instId = eventData.institution_id;
 
-                const dashboardData = await fetch(`${API_BASE_URL}/api/v1/events/${eventId}/dashboard-data?limit=500`, { headers: { ...authHeaders() } })
-                    .then(res => {
-                        if (!res.ok) throw new Error(`Dashboard data fetch failed with status ${res.status}`);
-                        return res.json();
-                    })
-                    .catch(err => {
-                        console.error("Critical: Failed to load dashboard data.", err);
-                        return null;
-                    });
+                const loadDashboardData = async () => {
+                    if (dashboardInflightRef.current) {
+                        return dashboardInflightRef.current;
+                    }
+                    const task = (async () => {
+                        const primary = await fetch(
+                            `${API_BASE_URL}/api/v1/events/${eventId}/dashboard-data?limit=200`,
+                            { headers: { ...authHeaders() } },
+                        );
+                        if (primary.ok) {
+                            return primary.json();
+                        }
+                        const [subsRes, teamsRes] = await Promise.all([
+                            fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/submissions`, { headers: { ...authHeaders() } }),
+                            fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/teams`, { headers: { ...authHeaders() } }),
+                        ]);
+                        const allSubs = subsRes.ok ? await subsRes.json() : [];
+                        const teamsData = teamsRes.ok ? await teamsRes.json() : [];
+                        const subsList = Array.isArray(allSubs) ? allSubs : [];
+                        const stageSubs = subsList.filter((s: any) => s.source === 'stage_deliverable');
+                        const legacySubs = subsList.filter((s: any) => s.source !== 'stage_deliverable');
+                        return {
+                            participants: [],
+                            quizzes: [],
+                            teams: Array.isArray(teamsData) ? teamsData : [],
+                            submissions: legacySubs,
+                            stage_submissions: stageSubs,
+                        };
+                    })();
+                    dashboardInflightRef.current = task;
+                    try {
+                        return await task;
+                    } finally {
+                        dashboardInflightRef.current = null;
+                    }
+                };
+
+                const dashboardData = await loadDashboardData().catch((err) => {
+                    console.error('Critical: Failed to load dashboard data.', err);
+                    return null;
+                });
 
                 // Step 3: Set state with the fetched data, with proper validation
                 if (dashboardData) {
-                    setParticipants(Array.isArray(dashboardData.participants) ? dashboardData.participants : []);
-                    setQuizzes(Array.isArray(dashboardData.quizzes) ? dashboardData.quizzes : []);
-
+                    const nextParticipants = Array.isArray(dashboardData.participants) ? dashboardData.participants : [];
+                    const nextQuizzes = Array.isArray(dashboardData.quizzes) ? dashboardData.quizzes : [];
                     const legacySubmissions = Array.isArray(dashboardData.submissions) ? dashboardData.submissions : [];
                     const stageSubmissions = Array.isArray(dashboardData.stage_submissions) ? dashboardData.stage_submissions.map((ss: any) => ({
                         ...ss,
@@ -735,10 +840,23 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                         user_name: ss.data?.name || ss.data?.full_name || '',
                         submitted_at: ss.submitted_at || ss.last_updated_at,
                     })) : [];
-                    setSubmissions([...legacySubmissions, ...stageSubmissions]);
-                    if (Array.isArray(dashboardData.teams) && dashboardData.teams.length > 0) {
-                        setTeams(dashboardData.teams);
-                    }
+                    const nextSubmissions = [...legacySubmissions, ...stageSubmissions];
+                    const nextTeams = Array.isArray(dashboardData.teams) ? dashboardData.teams : [];
+
+                    setParticipants(nextParticipants);
+                    setQuizzes(nextQuizzes);
+                    setSubmissions(nextSubmissions);
+                    if (nextTeams.length > 0) setTeams(nextTeams);
+
+                    writeEventDetailsCache(eventId, {
+                        event: eventData,
+                        participants: nextParticipants,
+                        stages: Array.isArray(eventData.stages) ? eventData.stages : [],
+                        criteria: eventData.judging_criteria || [],
+                        submissions: nextSubmissions,
+                        teams: nextTeams,
+                        quizzes: nextQuizzes,
+                    });
                 }
 
             } catch (err) {
@@ -750,7 +868,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
         };
 
         fetchData();
-    }, [eventId, refreshCounter]);
+    }, [eventId, refreshCounter, applyEvaluationThresholds]);
 
     // Fetch server-driven registration form and eligibility when admin views registrations
     useEffect(() => {
@@ -826,7 +944,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     }, [eventId, activeTab, user]);
 
     const saveEvaluationThresholds = async () => {
-        if (!eventId) return;
+        if (!eventId || threshold == null || waitlistThreshold == null || rejectThreshold == null) return;
         const payload = {
             criteria,
             evaluation_thresholds: {
@@ -842,6 +960,8 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
         });
         if (res.ok) {
             setEvent((prev) => (prev ? { ...prev, evaluation_thresholds: payload.evaluation_thresholds } : prev));
+            applyEvaluationThresholds(payload.evaluation_thresholds);
+            if (eventId) invalidateEventDetailsCache(eventId);
             setShowSaveSuccess(true);
             setTimeout(() => setShowSaveSuccess(false), 2000);
             fetchBundle();
@@ -852,13 +972,14 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     };
 
     const fetchBundle = async () => {
-        if (!eventId || activeTab !== 'submissions') return;
+        if (!eventId || activeTab !== 'submissions' || debouncedThreshold == null) return;
         try {
-            const params = new URLSearchParams({
-                threshold: String(debouncedThreshold),
-                waitlist_min: String(debouncedWaitlist),
-                reject_below: String(debouncedReject),
-            });
+            const params = new URLSearchParams();
+            if (thresholdsDirty) {
+                params.set('threshold', String(debouncedThreshold));
+                if (debouncedWaitlist != null) params.set('waitlist_min', String(debouncedWaitlist));
+                if (debouncedReject != null) params.set('reject_below', String(debouncedReject));
+            }
             if (selectedSubmissionStageId) params.set('stage_id', selectedSubmissionStageId);
             const res = await fetch(
                 `${API_BASE_URL}/api/v1/institution/events/${eventId}/qualified-bundle?${params}`,
@@ -969,16 +1090,19 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     }, [activeTab, submissionSubTab, selectedSubTabQuizStageId, eventId, refreshCounter]);
 
     useEffect(() => {
+        if (threshold == null) return;
         const timer = window.setTimeout(() => setDebouncedThreshold(threshold), 400);
         return () => window.clearTimeout(timer);
     }, [threshold]);
 
     useEffect(() => {
+        if (waitlistThreshold == null) return;
         const timer = window.setTimeout(() => setDebouncedWaitlist(waitlistThreshold), 400);
         return () => window.clearTimeout(timer);
     }, [waitlistThreshold]);
 
     useEffect(() => {
+        if (rejectThreshold == null) return;
         const timer = window.setTimeout(() => setDebouncedReject(rejectThreshold), 400);
         return () => window.clearTimeout(timer);
     }, [rejectThreshold]);
@@ -997,10 +1121,10 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     }, [stages, selectedSubmissionStageId]);
 
     useEffect(() => {
-        if (eventId && activeTab === 'submissions') {
+        if (eventId && activeTab === 'submissions' && thresholdsHydratedRef.current) {
             fetchBundle();
         }
-    }, [eventId, activeTab, debouncedThreshold, debouncedWaitlist, debouncedReject, selectedSubmissionStageId, refreshCounter]);
+    }, [eventId, activeTab, debouncedThreshold, debouncedWaitlist, debouncedReject, selectedSubmissionStageId, refreshCounter, thresholdsDirty]);
 
     useEffect(() => {
         if (activeTab !== 'assessments' || !eventId || quizzes.length === 0) return;
@@ -1058,7 +1182,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     };
 
     const handleSaveRubrics = async () => {
-        if (!eventId) return;
+        if (!eventId || threshold == null || waitlistThreshold == null || rejectThreshold == null) return;
         setSaving(true);
         try {
             const res = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/criteria`, {
@@ -1721,7 +1845,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                 setIsBulkMode(false);
                 // Refresh submissions
                 setRefreshCounter(prev => prev + 1);
-                fetchBundle(debouncedThreshold);
+                fetchBundle();
             } else {
                 const error = await res.json();
                 alert(error.detail || 'Failed to assign judge');
@@ -1746,21 +1870,32 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     };
 
     const handleInviteJudge = async (judgeData: any) => {
+        if (!eventId) return;
+        const email = String(judgeData.email || '').trim().toLowerCase();
+        if (!email) {
+            alert('Judge email is required to send invitations and evaluation links.');
+            return;
+        }
         setIsInvitingJudge(true);
         try {
-            const res = await fetch(`${API_BASE_URL}/api/judges/`, {
+            const res = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/judges`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', ...authHeaders() },
                 body: JSON.stringify({
                     name: judgeData.name,
-                    domain: judgeData.expertise,
-                    institution_id: institutionIdProp || user?.institution_id,
-                    is_test: false
-                })
+                    email,
+                    expertise: judgeData.expertise,
+                }),
             });
             if (res.ok) {
+                const result = await res.json();
                 setIsJudgeInviteOpen(false);
-                setRefreshCounter(prev => prev + 1); // triggers fetchJudges
+                setRefreshCounter(prev => prev + 1);
+                if (result.email_sent === false) {
+                    alert('Judge added, but the invitation email could not be sent. Check SMTP settings or copy the evaluation link from the judge card.');
+                } else {
+                    alert('Judge invitation sent. They will receive an email with their evaluation link.');
+                }
             } else {
                 const error = await res.json();
                 alert(error.detail || 'Failed to add judge');
@@ -1938,7 +2073,9 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
             const subDomain = s.domain || s.data?.domain || s.data?.Domain;
             const matchesDomain = domainFilter === 'All Domains' || subDomain === domainFilter;
             const matchesJudge = judgeFilter === 'All Judges' || s.assignedJudgeId === judgeFilter;
-            const matchesStage = !selectedSubmissionStageId || s.stage_id === selectedSubmissionStageId;
+            const matchesStage = !selectedSubmissionStageId
+                || s.stage_id === selectedSubmissionStageId
+                || (activeStage?.name && s.stage_name === activeStage.name);
             return matchesSearch && matchesDomain && matchesJudge && matchesStage;
         });
 
@@ -1958,7 +2095,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
             for (const [key, value] of Object.entries(stageData)) {
                 const label = fieldConfigs[key]?.label || key.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
                 if (typeof value === 'object' && value && (value as any)._stored_file) {
-                    files.push({ key, label, value });
+                    files.push({ key, label, value, mime: (value as any).mime || '' });
                 } else if (typeof value === 'string' && value.startsWith('data:')) {
                     const mime = value.split(';')[0].split(':')[1] || '';
                     files.push({ key, label, value, mime });
@@ -2374,21 +2511,23 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                                                 mime.includes('presentation') || mime.includes('ppt') ? <FileCheck size={16} /> :
                                                                 mime.startsWith('image/') ? <FileImage size={16} /> :
                                                                 mime.startsWith('video/') ? <FileVideo size={16} /> : <FileText size={16} />;
+                                                            const badge = getFileTypeBadge(f.value?.filename || f.label, mime);
                                                             if (typeof f.value === 'object' && f.value?._stored_file) {
                                                                 return (
-                                                                    <button key={f.key} type="button" title={f.label}
+                                                                    <button key={f.key} type="button" title={`${f.label} (${badge})`}
                                                                         onClick={() => openStageSubmissionFile(String(sub._id), f.key, f.value.filename)}
-                                                                        className="flex items-center justify-center w-9 h-9 bg-amber-50 text-amber-600 rounded-xl border border-amber-100 hover:bg-amber-100 transition-colors">
-                                                                        {icon}
+                                                                        className="flex items-center gap-1.5 px-2.5 py-1.5 bg-amber-50 text-amber-700 rounded-xl border border-amber-100 hover:bg-amber-100 transition-colors text-[9px] font-black uppercase tracking-wider">
+                                                                        {icon}<span>{badge}</span>
                                                                     </button>
                                                                 );
                                                             }
                                                             if (typeof f.value === 'string' && f.value.startsWith('data:')) {
+                                                                const dataFilename = buildPreviewFilename(f.label, mime);
                                                                 return (
-                                                                    <button key={f.key} type="button" title={f.label}
-                                                                        onClick={() => setPreviewAsset({ url: f.value, filename: `${f.label}.${mime.split('/')[1] || 'bin'}`, type: 'file' })}
-                                                                        className="flex items-center justify-center w-9 h-9 bg-amber-50 text-amber-600 rounded-xl border border-amber-100 hover:bg-amber-100 transition-colors">
-                                                                        {icon}
+                                                                    <button key={f.key} type="button" title={`${f.label} (${badge})`}
+                                                                        onClick={() => setPreviewAsset({ url: f.value, filename: dataFilename, type: 'file' })}
+                                                                        className="flex items-center gap-1.5 px-2.5 py-1.5 bg-amber-50 text-amber-700 rounded-xl border border-amber-100 hover:bg-amber-100 transition-colors text-[9px] font-black uppercase tracking-wider">
+                                                                        {icon}<span>{badge}</span>
                                                                     </button>
                                                                 );
                                                             }
@@ -2484,38 +2623,46 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
             <div className="mt-16 space-y-8">
                 <div className="flex flex-wrap items-end justify-between gap-6 px-6">
                     <div className="space-y-4 flex-1">
+                        <p className="text-[11px] text-slate-500 font-medium max-w-3xl">
+                            Percentages are calculated from judge rubric scores: each submission&apos;s total judge marks ÷ your rubric&apos;s max points
+                            {bundleData?.thresholds?.max_possible_score ? ` (${bundleData.thresholds.max_possible_score} pts)` : ''} × 100.
+                            Shortlisted teams can be notified and appear on the leaderboard.
+                        </p>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                             <div className="space-y-2">
                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Shortlist ≥ (%)</label>
                                 <div className="flex items-center gap-3">
-                                    <input type="range" min={0} max={100} value={threshold} onChange={(e) => setThreshold(Number(e.target.value))} className="flex-1" />
-                                    <span className="text-sm font-black text-[#6C3BFF] w-10">{threshold}%</span>
+                                    <input type="range" min={0} max={100} value={threshold ?? 80} onChange={(e) => { setThreshold(Number(e.target.value)); setThresholdsDirty(true); }} className="flex-1" disabled={threshold == null} />
+                                    <span className="text-sm font-black text-[#6C3BFF] w-10">{threshold ?? '—'}%</span>
                                 </div>
                             </div>
                             <div className="space-y-2">
                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Waitlist ≥ (%)</label>
                                 <div className="flex items-center gap-3">
-                                    <input type="range" min={0} max={100} value={waitlistThreshold} onChange={(e) => setWaitlistThreshold(Number(e.target.value))} className="flex-1" />
-                                    <span className="text-sm font-black text-amber-600 w-10">{waitlistThreshold}%</span>
+                                    <input type="range" min={0} max={100} value={waitlistThreshold ?? 65} onChange={(e) => { setWaitlistThreshold(Number(e.target.value)); setThresholdsDirty(true); }} className="flex-1" disabled={waitlistThreshold == null} />
+                                    <span className="text-sm font-black text-amber-600 w-10">{waitlistThreshold ?? '—'}%</span>
                                 </div>
                             </div>
                             <div className="space-y-2">
                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Reject &lt; (%)</label>
                                 <div className="flex items-center gap-3">
-                                    <input type="range" min={0} max={100} value={rejectThreshold} onChange={(e) => setRejectThreshold(Number(e.target.value))} className="flex-1" />
-                                    <span className="text-sm font-black text-rose-600 w-10">{rejectThreshold}%</span>
+                                    <input type="range" min={0} max={100} value={rejectThreshold ?? 65} onChange={(e) => { setRejectThreshold(Number(e.target.value)); setThresholdsDirty(true); }} className="flex-1" disabled={rejectThreshold == null} />
+                                    <span className="text-sm font-black text-rose-600 w-10">{rejectThreshold ?? '—'}%</span>
                                 </div>
                             </div>
                         </div>
                         <div className="flex flex-wrap items-center gap-4">
-                            <button type="button" onClick={saveEvaluationThresholds}
-                                className="px-4 py-2 rounded-xl bg-slate-900 text-white text-[10px] font-black uppercase tracking-wider hover:bg-slate-800">
+                            <button type="button" onClick={saveEvaluationThresholds} disabled={threshold == null}
+                                className="px-4 py-2 rounded-xl bg-slate-900 text-white text-[10px] font-black uppercase tracking-wider hover:bg-slate-800 disabled:opacity-40">
                                 Save thresholds
                             </button>
-                            {bundleData?.thresholds ? (
+                            {event?.evaluation_thresholds ? (
                                 <p className="text-[10px] text-slate-400 font-medium">
-                                    Active: Shortlist ≥ {bundleData.thresholds.shortlist_min}% · Waitlist ≥ {bundleData.thresholds.waitlist_min}% · Reject &lt; {bundleData.thresholds.reject_below}%
+                                    Saved: Shortlist ≥ {event.evaluation_thresholds.shortlist_min}% · Waitlist ≥ {event.evaluation_thresholds.waitlist_min}% · Reject &lt; {event.evaluation_thresholds.reject_below}%
                                 </p>
+                            ) : null}
+                            {thresholdsDirty ? (
+                                <p className="text-[10px] text-amber-600 font-bold uppercase tracking-wider">Previewing unsaved thresholds</p>
                             ) : null}
                         </div>
                     </div>
@@ -2919,7 +3066,10 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                             </div>
                         </div>
                         <h4 className="text-2xl font-black text-slate-900 mb-2 tracking-tight">{j.name}</h4>
-                        <p className="text-sm font-bold text-purple-600 uppercase tracking-widest mb-8">{j.domain}</p>
+                        <p className="text-sm font-bold text-purple-600 uppercase tracking-widest mb-2">{j.expertise || j.domain || 'Evaluator'}</p>
+                        <p className="text-[10px] font-black text-amber-700 bg-amber-50 inline-block px-3 py-1 rounded-lg mb-8">
+                            {j.assignment_count ?? 0} submission{(j.assignment_count ?? 0) !== 1 ? 's' : ''} assigned
+                        </p>
 
                         <div className="pt-8 border-t border-slate-50 flex items-center justify-between mt-auto">
                             <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
@@ -5032,7 +5182,19 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                 );
 
             case 'leaderboard':
-                return <LeaderboardPage eventId={eventId} refreshCounter={refreshCounter} />;
+                return (
+                    <LeaderboardPage
+                        eventId={eventId}
+                        refreshCounter={refreshCounter}
+                        stages={stages.filter((s) => {
+                            const t = String(s.type || '').toUpperCase();
+                            const n = String(s.name || '').toLowerCase();
+                            return !['REGISTRATION', 'TEAM_FORMATION', 'QUIZ'].includes(t)
+                                && !n.includes('registration')
+                                && !n.includes('team formation');
+                        })}
+                    />
+                );
             case 'pipeline':
                 return <PipelineView eventId={eventId} stages={stages} />;
             case 'package':
@@ -5215,21 +5377,25 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Institutional Asset Intelligence Protocol • Secure Preview</p>
                                 </div>
                                 <div className="flex items-center gap-4">
-                                    <a 
-                                        href={previewAsset.url} 
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="flex items-center gap-2 px-6 py-3 bg-slate-100 text-slate-600 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-[#6C3BFF] hover:text-white transition-all"
-                                    >
-                                        <ExternalLink size={14} /> Open Original
-                                    </a>
-                                    <a 
-                                        href={previewAsset.url} 
-                                        download 
-                                        className="flex items-center gap-2 px-6 py-3 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:shadow-xl transition-all"
-                                    >
-                                        <Download size={14} /> Download
-                                    </a>
+                                    {!previewAsset.loading && (
+                                        <>
+                                            <a 
+                                                href={previewAsset.url} 
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="flex items-center gap-2 px-6 py-3 bg-slate-100 text-slate-600 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-[#6C3BFF] hover:text-white transition-all"
+                                            >
+                                                <ExternalLink size={14} /> Open Original
+                                            </a>
+                                            <a 
+                                                href={previewAsset.url} 
+                                                download 
+                                                className="flex items-center gap-2 px-6 py-3 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:shadow-xl transition-all"
+                                            >
+                                                <Download size={14} /> Download
+                                            </a>
+                                        </>
+                                    )}
                                     <button 
                                         onClick={() => {
                                             if (previewAsset?.url?.startsWith('blob:')) URL.revokeObjectURL(previewAsset.url);
@@ -5243,108 +5409,13 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                             </div>
                             <div className="flex-1 bg-slate-100 p-8 relative">
                                 <div className="w-full h-full rounded-[2rem] overflow-hidden shadow-2xl bg-white relative">
-                                    {/* File Preview by type */}
-                                    {previewAsset.filename.toLowerCase().match(/\.(pdf)$/) ? (
-                                        <iframe 
-                                            src={previewAsset.url}
-                                            className="w-full h-full border-none"
-                                            title="PDF Preview"
-                                        />
-                                    ) : previewAsset.filename.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp|svg)$/) ? (
-                                        <img 
-                                            src={previewAsset.url}
-                                            className="w-full h-full object-contain"
-                                            alt={previewAsset.filename}
-                                        />
-                                    ) : previewAsset.filename.toLowerCase().match(/\.(mp4|webm|mov)$/) ? (
-                                        <video 
-                                            src={previewAsset.url}
-                                            controls
-                                            className="w-full h-full"
-                                        />
-                                    ) : previewAsset.filename.toLowerCase().match(/\.(pptx|ppt|docx|doc|xlsx|xls)$/) ? (
-                                        <div className="w-full h-full flex flex-col bg-slate-50 relative">
-                                            <div className="absolute inset-0 flex items-center justify-center -z-0">
-                                                <div className="w-12 h-12 border-4 border-slate-200 border-t-[#6C3BFF] rounded-full animate-spin"></div>
-                                            </div>
-                                            <iframe 
-                                                src={`https://docs.google.com/viewer?url=${encodeURIComponent(previewAsset.url)}&embedded=true`}
-                                                className="flex-1 w-full border-none bg-white relative z-10"
-                                                title="Office Preview"
-                                            />
-                                            <div className="p-4 bg-white border-t border-slate-100 flex items-center justify-between px-8">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="w-8 h-8 bg-orange-50 rounded-lg flex items-center justify-center text-orange-600 font-black text-xs">PPT</div>
-                                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Document Intelligence Protocol Active</span>
-                                                </div>
-                                                <div className="flex gap-2">
-                                                    <a 
-                                                        href={`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(previewAsset.url)}`}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className="px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-slate-900 hover:text-white transition-all"
-                                                    >
-                                                        Alternative Viewer (MS Office)
-                                                    </a>
-                                                </div>
-                                            </div>
-                                            {/* Localhost / Offline Fallback */}
-                                            {previewAsset.url.includes('localhost') && (
-                                                <div className="absolute inset-0 z-20 bg-white/90 backdrop-blur-sm flex items-center justify-center p-12 text-center">
-                                                    <div className="max-w-md space-y-6">
-                                                        <div className="w-20 h-20 bg-amber-50 rounded-[2rem] flex items-center justify-center text-4xl mx-auto shadow-inner">🚧</div>
-                                                        <div className="space-y-2">
-                                                            <h4 className="text-xl font-black text-slate-900 uppercase tracking-tight">Localhost Preview Blocked</h4>
-                                                            <p className="text-sm text-slate-500 leading-relaxed font-medium">
-                                                                Cloud viewers (Google/Microsoft) cannot access files stored on your local machine (localhost).
-                                                            </p>
-                                                        </div>
-                                                        <div className="flex flex-col gap-3">
-                                                            <a 
-                                                                href={previewAsset.url} 
-                                                                target="_blank"
-                                                                rel="noopener noreferrer"
-                                                                className="w-full py-4 bg-[#6C3BFF] text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-xl shadow-purple-500/20"
-                                                            >
-                                                                Open File Directly
-                                                            </a>
-                                                            <a 
-                                                                href={previewAsset.url} 
-                                                                download
-                                                                className="w-full py-4 bg-slate-900 text-white rounded-2xl text-xs font-black uppercase tracking-widest"
-                                                            >
-                                                                Download & View
-                                                            </a>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            )}
+                                    {previewAsset.loading ? (
+                                        <div className="w-full h-full flex flex-col items-center justify-center gap-4">
+                                            <div className="w-10 h-10 border-4 border-[#6C3BFF] border-t-transparent rounded-full animate-spin" />
+                                            <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Loading preview…</p>
                                         </div>
                                     ) : (
-                                        <div className="flex flex-col items-center justify-center h-full gap-6 p-8">
-                                            <div className="w-24 h-24 bg-slate-50 rounded-3xl flex items-center justify-center text-5xl">📎</div>
-                                            <div className="text-center space-y-2">
-                                                <p className="text-xl font-black text-slate-900">{previewAsset.filename}</p>
-                                                <p className="text-sm text-slate-500 font-medium">Preview not available for this file type</p>
-                                            </div>
-                                            <div className="flex gap-3">
-                                                <a 
-                                                    href={previewAsset.url} 
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="flex items-center gap-2 px-8 py-4 bg-slate-900 text-white rounded-2xl text-sm font-black uppercase tracking-widest hover:bg-purple-700 transition-all shadow-lg"
-                                                >
-                                                    <ExternalLink size={18} /> Open File
-                                                </a>
-                                                <a 
-                                                    href={previewAsset.url} 
-                                                    download 
-                                                    className="flex items-center gap-2 px-8 py-4 bg-slate-100 text-slate-700 rounded-2xl text-sm font-black uppercase tracking-widest hover:bg-slate-200 transition-all"
-                                                >
-                                                    <Download size={18} /> Download
-                                                </a>
-                                            </div>
-                                        </div>
+                                        <FilePreviewPanel url={previewAsset.url} filename={previewAsset.filename} mime={previewAsset.mime} />
                                     )}
                                 </div>
                             </div>
@@ -5365,14 +5436,33 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                 {judgeAssignmentModal.submissionId === 'bulk' ? `Assigning to ${selectedSubmissions.length} projects` : 'Single Project Evaluation'}
                             </p>
                         </div>
+                        {availableJudges.length > 0 && (() => {
+                            const counts = availableJudges.map((j: any) => j.assignment_count ?? 0);
+                            const avg = counts.length ? counts.reduce((a, b) => a + b, 0) / counts.length : 0;
+                            const unassigned = judgeAssignmentModal.submissionId === 'bulk'
+                                ? selectedSubmissions.length
+                                : 1;
+                            const needMoreJudges = availableJudges.length < 3 || (avg > 0 && unassigned > availableJudges.length * 2);
+                            return needMoreJudges ? (
+                                <div className="mb-4 p-4 bg-amber-50 border border-amber-100 rounded-xl text-xs text-amber-800">
+                                    <strong>Workload tip:</strong> You have {availableJudges.length} judge{availableJudges.length !== 1 ? 's' : ''} for {unassigned} submission{unassigned !== 1 ? 's' : ''}.
+                                    {availableJudges.length < 3 ? ' Consider inviting more judges to spread evaluations evenly.' : ' Some judges already carry more assignments — pick the lightest load below.'}
+                                </div>
+                            ) : null;
+                        })()}
                         <div className="space-y-4 max-h-64 overflow-y-auto">
                             {availableJudges.length > 0 ? (
-                                availableJudges.map((judge: any) => (
+                                [...availableJudges]
+                                    .sort((a: any, b: any) => (a.assignment_count ?? 0) - (b.assignment_count ?? 0))
+                                    .map((judge: any) => (
                                     <div key={judge._id} className="p-4 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors">
                                         <div className="flex items-center justify-between">
                                             <div>
                                                 <h4 className="font-semibold text-slate-900">{judge.name || 'Unknown Judge'}</h4>
                                                 <p className="text-sm text-slate-600">{judge.email}</p>
+                                                <p className="text-[10px] font-black text-purple-600 uppercase tracking-widest mt-1">
+                                                    {judge.assignment_count ?? 0} project{(judge.assignment_count ?? 0) !== 1 ? 's' : ''} assigned
+                                                </p>
                                             </div>
                                             <div className="flex gap-2">
                                                 <button 

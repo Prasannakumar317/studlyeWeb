@@ -43,6 +43,7 @@ const TabLoader = () => (
 const InstitutionDashboard: React.FC = () => {
     const location = useLocation();
     const navigate = useNavigate();
+    const { user, role } = useAuth();
     const [activeTab, setActiveTab] = useState('dashboard');
 
     // Handle URL-based navigation to set active tab
@@ -58,6 +59,10 @@ const InstitutionDashboard: React.FC = () => {
         }
 
         if (path.includes('/judge')) {
+            if (role === 'judge') {
+                navigate('/judge-portal', { replace: true });
+                return;
+            }
             setActiveTab('judges');
         } else if (path.includes('/events')) {
             setActiveTab('events');
@@ -82,7 +87,7 @@ const InstitutionDashboard: React.FC = () => {
         } else if (path.includes('/settings')) {
             setActiveTab('settings');
         }
-    }, [location.pathname, location.search]);
+    }, [location.pathname, location.search, role, navigate]);
 
     // Update URL when tab changes
     const handleTabChange = (tab: string) => {
@@ -103,7 +108,6 @@ const InstitutionDashboard: React.FC = () => {
     const [profileRefreshTrigger, setProfileRefreshTrigger] = useState(0);
     const [editingEventId, setEditingEventId] = useState<string | null>(null);
 
-    const { user, role } = useAuth();
     const institutionId = (user as any)?.institution_id || user?.user_id || 'default_inst';
 
     React.useEffect(() => {

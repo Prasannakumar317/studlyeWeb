@@ -1,25 +1,57 @@
 from bson import ObjectId
-from fastapi import APIRouter, HTTPException, Body
-from services.judge_service import create_judge, get_all_judges, assign_judge_to_submission
+from fastapi import APIRouter, HTTPException, Body, Query
+from services.judge_service import (
+    create_judge,
+    get_all_judges,
+    assign_judge_to_submission,
+    send_judge_panel_invitation_email,
+    get_judge_invitation_details,
+    respond_judge_invitation,
+)
 from services.score_service import submit_score, get_scores_for_submission
 
 router = APIRouter(prefix="/api/judges", tags=["Judges"])
+portal_router = APIRouter(prefix="/api/judge-portal", tags=["Judge Portal"])
 
 @router.post("/")
 async def add_judge(data: dict = Body(...)):
-    # Add is_test flag to distinguish test judges from real ones
     judge_data = {
         **data,
-        "is_test": data.get("is_test", False)  # Default to False for real judges
+        "is_test": data.get("is_test", False),
+        "status": data.get("status") or "INVITED",
     }
-    return await create_judge(judge_data)
+    result = await create_judge(judge_data)
+
+    email = str(data.get("email") or "").strip().lower()
+    email_sent = False
+    if email and not data.get("is_test", False) and not data.get("skip_email"):
+        email_sent = await send_judge_panel_invitation_email(
+            email,
+            data.get("name") or data.get("full_name") or email,
+            event_title=data.get("event_title") or "Studlyf Institutional Events",
+            invitation_token=result.get("invitation_token") or "",
+        )
+    result["email_sent"] = email_sent
+    return result
 
 @router.get("/")
 async def list_judges():
     judges = await get_all_judges()
     # Filter out test judges (only return real judges to institution dashboard)
-    real_judges = [judge for judge in judges if not judge.get("is_test", True)]
+    real_judges = [judge for judge in judges if not judge.get("is_test", False)]
     return real_judges
+
+@router.post("/assign-round-robin")
+async def assign_round_robin_route(
+    submission_ids: list = Body(...),
+    judge_ids: list = Body(...),
+    max_per_judge: int = Body(0),
+):
+    from services.judge_service import assign_round_robin
+
+    cap = int(max_per_judge) if int(max_per_judge or 0) > 0 else 10_000
+    return await assign_round_robin(submission_ids, judge_ids, max_per_judge=cap)
+
 
 @router.post("/assign")
 async def assign_judge(submission_id: str = Body(None), submission_ids: list = Body(None), judge_id: str = Body(...)):
@@ -74,3 +106,24 @@ async def delete_judge(judge_id: str):
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Judge not found")
     return {"status": "success"}
+
+
+@portal_router.get("/invitation-details")
+async def portal_invitation_details(token: str = Query(...)):
+    try:
+        return await get_judge_invitation_details(token)
+    except LookupError:
+        raise HTTPException(status_code=404, detail="Invitation not found or expired")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@portal_router.post("/respond")
+async def portal_respond_invitation(body: dict = Body(...)):
+    token = str(body.get("token") or "").strip()
+    if not token:
+        raise HTTPException(status_code=400, detail="token is required")
+    try:
+        return await respond_judge_invitation(token=token, accept=bool(body.get("accept", True)))
+    except LookupError:
+        raise HTTPException(status_code=404, detail="Invitation not found or expired")

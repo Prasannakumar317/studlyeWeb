@@ -34,6 +34,8 @@ import logging
 # Ensure upload directory exists
 EVENTS_UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads", "events")
 os.makedirs(EVENTS_UPLOAD_DIR, exist_ok=True)
+INSTITUTIONS_UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads", "institutions")
+os.makedirs(INSTITUTIONS_UPLOAD_DIR, exist_ok=True)
 
 BASE_URL = os.getenv("RENDER_EXTERNAL_URL", "http://localhost:8000")
 
@@ -79,11 +81,74 @@ def _event_id_query(event_id: str) -> dict:
     return {"$or": or_clauses}
 
 
+async def collect_event_id_variants(event_id: str, event: dict | None = None) -> list:
+    """All event_id strings that may appear on submissions, scores, and teams."""
+    from routes.registration_flow_routes import resolve_event_id
+
+    variants: list = []
+
+    def _add(value) -> None:
+        if value is None:
+            return
+        s = str(value).strip()
+        if s and s not in variants:
+            variants.append(s)
+
+    _add(event_id)
+    try:
+        _add(await resolve_event_id(event_id))
+    except Exception:
+        pass
+
+    if event is None:
+        try:
+            event = await events_col.find_one(_event_id_query(event_id))
+        except Exception:
+            event = None
+    if event:
+        _add(event.get("_id"))
+        _add(event.get("event_id"))
+        _add(event.get("event_link_id"))
+
+    opp_or: list = []
+    for vid in list(variants):
+        opp_or.append({"event_link_id": vid})
+        if ObjectId.is_valid(vid):
+            try:
+                opp_or.append({"_id": ObjectId(vid)})
+            except Exception:
+                pass
+    if opp_or:
+        async for opp in opportunities_col.find({"$or": opp_or}, {"_id": 1, "event_link_id": 1}):
+            _add(opp.get("_id"))
+            _add(opp.get("event_link_id"))
+
+    return variants
+
+
 def _strip_data_uri(value):
     """Omit base64 data URIs from API payloads — they can be hundreds of KB each."""
     if isinstance(value, str) and value.startswith("data:"):
         return None
     return value
+
+
+def _resolve_institution_logo_url(institution_id: str, profile: dict) -> str | None:
+    """Return a logo URL usable by the navbar (file path, https, or compact data URI)."""
+    raw = profile.get("logo_url") or profile.get("logo") or profile.get("image_url")
+    if not raw or not isinstance(raw, str):
+        file_logo = os.path.join(INSTITUTIONS_UPLOAD_DIR, institution_id, "logo")
+        for ext in (".png", ".jpg", ".jpeg", ".webp", ".gif"):
+            if os.path.isfile(file_logo + ext):
+                return f"/api/v1/institution/profile/{institution_id}/media/logo"
+        return None
+    if raw.startswith("/api/"):
+        return raw
+    if raw.startswith("http://") or raw.startswith("https://"):
+        return raw
+    if raw.startswith("data:image/"):
+        return raw
+    return raw
 
 
 def _strip_event_payload_bloat(event: dict) -> dict:
@@ -443,14 +508,51 @@ async def get_institution_branding(institution_id: str, user: dict = Depends(get
     )
     if not profile:
         raise HTTPException(status_code=404, detail="Institution not found")
-    logo = _strip_data_uri(
-        profile.get("logo_url") or profile.get("logo") or profile.get("image_url")
-    )
+    logo = _resolve_institution_logo_url(institution_id, profile)
     return {
         "institution_id": institution_id,
         "name": profile.get("name") or profile.get("institution_name") or "Institution",
         "logo_url": logo,
     }
+
+
+@router.get("/profile/{institution_id}/media/{asset}")
+async def get_institution_media(institution_id: str, asset: str):
+    """Serve institution logo/banner from disk (fallback: decode stored data URI once)."""
+    from fastapi.responses import Response
+    import base64
+
+    base_asset = str(asset or "").split(".")[0].lower()
+    if base_asset not in ("logo", "banner"):
+        raise HTTPException(status_code=404, detail="Not found")
+
+    inst_dir = os.path.join(INSTITUTIONS_UPLOAD_DIR, institution_id)
+    if os.path.isdir(inst_dir):
+        for fname in os.listdir(inst_dir):
+            if fname.startswith(f"{base_asset}."):
+                fpath = os.path.join(inst_dir, fname)
+                ext = os.path.splitext(fname)[1].lower()
+                mime = "image/png"
+                if ext in (".jpg", ".jpeg"):
+                    mime = "image/jpeg"
+                elif ext == ".webp":
+                    mime = "image/webp"
+                elif ext == ".gif":
+                    mime = "image/gif"
+                with open(fpath, "rb") as fh:
+                    return Response(content=fh.read(), media_type=mime)
+
+    profile = await institutions_col.find_one({"institution_id": institution_id})
+    if profile:
+        raw = profile.get(f"{base_asset}_url") or (profile.get("logo") if base_asset == "logo" else None)
+        if isinstance(raw, str) and raw.startswith("data:"):
+            header, _, encoded = raw.partition(",")
+            mime = header[5:].split(";")[0] if header.startswith("data:") else "image/png"
+            try:
+                return Response(content=base64.b64decode(encoded), media_type=mime)
+            except Exception:
+                pass
+    raise HTTPException(status_code=404, detail="Media not found")
 
 
 @router.get("/profile/{institution_id}")
@@ -479,15 +581,35 @@ async def fetch_summary(institution_id: str, user: dict = Depends(get_auth_user)
     assert_institution_scope(institution_id, user)
     return await analytics_service.get_kpi_summary(institution_id)
 
+def _resolve_event_dates(doc: dict) -> tuple:
+    fd = doc.get("festivalData") if isinstance(doc.get("festivalData"), dict) else {}
+    form = doc.get("formData") if isinstance(doc.get("formData"), dict) else {}
+    stages = doc.get("stages") if isinstance(doc.get("stages"), list) else []
+    first = stages[0] if stages and isinstance(stages[0], dict) else {}
+    start = (
+        doc.get("start_date") or doc.get("startDate") or doc.get("eventStartDate")
+        or doc.get("registrationStartDate") or fd.get("startDate") or form.get("startDate")
+        or first.get("start_date") or first.get("startDate")
+    )
+    end = (
+        doc.get("end_date") or doc.get("endDate") or doc.get("eventEndDate")
+        or doc.get("registrationDeadline") or doc.get("deadline")
+        or fd.get("endDate") or form.get("endDate")
+        or first.get("end_date") or first.get("endDate") or first.get("deadline")
+    )
+    return start, end
+
+
 def _event_list_row(doc: dict, participant_count: int = 0) -> dict:
     logo = _strip_data_uri(doc.get("logo_url") or doc.get("logo") or doc.get("image_url") or doc.get("image"))
+    start_date, end_date = _resolve_event_dates(doc)
     return {
         "_id": str(doc.get("_id", "")),
         "title": doc.get("title") or doc.get("name") or "Untitled",
         "status": doc.get("status", "Draft"),
         "category": doc.get("category") or doc.get("type") or "Event",
-        "start_date": doc.get("start_date") or doc.get("startDate"),
-        "end_date": doc.get("end_date") or doc.get("endDate"),
+        "start_date": start_date,
+        "end_date": end_date,
         "created_at": doc.get("created_at") or doc.get("createdAt") or doc.get("deadline"),
         "participant_count": participant_count,
         "logo_url": logo,
@@ -537,8 +659,10 @@ async def get_events_summary(
         {"institution_id": institution_id, "status": {"$ne": "DELETED"}},
         {
             "_id": 1, "title": 1, "status": 1, "category": 1, "type": 1,
-            "start_date": 1, "end_date": 1, "created_at": 1, "createdAt": 1,
-            "logo_url": 1, "logo": 1, "image_url": 1, "image": 1,
+            "start_date": 1, "end_date": 1, "startDate": 1, "endDate": 1,
+            "eventStartDate": 1, "eventEndDate": 1, "registrationStartDate": 1, "registrationDeadline": 1,
+            "festivalData": 1, "formData": 1, "stages": 1, "deadline": 1,
+            "created_at": 1, "createdAt": 1, "logo_url": 1, "logo": 1, "image_url": 1, "image": 1,
         },
     )
     async for event in e_cursor:
@@ -553,8 +677,11 @@ async def get_events_summary(
         {"$or": [{"institution_id": institution_id}, {"createdBy": institution_id}]},
         {
             "_id": 1, "title": 1, "status": 1, "type": 1, "category": 1,
-            "start_date": 1, "end_date": 1, "created_at": 1, "createdAt": 1, "deadline": 1,
-            "event_link_id": 1, "logo_url": 1, "logo": 1, "image_url": 1, "image": 1,
+            "start_date": 1, "end_date": 1, "startDate": 1, "endDate": 1,
+            "eventStartDate": 1, "eventEndDate": 1, "registrationStartDate": 1, "registrationDeadline": 1,
+            "festivalData": 1, "formData": 1, "stages": 1, "deadline": 1,
+            "created_at": 1, "createdAt": 1, "event_link_id": 1,
+            "logo_url": 1, "logo": 1, "image_url": 1, "image": 1,
         },
     )
     async for opp in o_cursor:
@@ -1138,7 +1265,7 @@ async def get_all_institution_participants(institution_id: str, user: dict = Dep
 @router.get("/events/{event_id}/qualified-bundle")
 async def get_qualified_bundle(
     event_id: str,
-    threshold: float = 80.0,
+    threshold: float | None = None,
     waitlist_min: float | None = None,
     reject_below: float | None = None,
     stage_id: str | None = None,
@@ -1146,12 +1273,7 @@ async def get_qualified_bundle(
 ):
     logger.info(f"[QUALIFIED-BUNDLE] Called event_id={event_id}")
 
-    event = await events_col.find_one({"_id": event_id})
-    if not event:
-        try:
-            event = await events_col.find_one({"_id": ObjectId(event_id)})
-        except Exception:
-            pass
+    event = await events_col.find_one(_event_id_query(event_id))
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
 
@@ -1159,19 +1281,20 @@ async def get_qualified_bundle(
     all_items: dict = {}
     enriched_count = 0
     event_judges = event.get("judges") or []
-    all_items: dict = {}
 
-    event_id_variants = [event_id, str(event_id)]
-    try:
-        if len(str(event_id)) == 24:
-            event_id_variants.append(ObjectId(event_id))
-    except Exception:
-        pass
+    event_id_variants = await collect_event_id_variants(event_id, event)
+    event_id_in: list = list(event_id_variants)
+    for vid in list(event_id_variants):
+        if ObjectId.is_valid(vid):
+            try:
+                event_id_in.append(ObjectId(vid))
+            except Exception:
+                pass
 
     stage_filter = str(stage_id).strip() if stage_id else ""
-    raw_subs = await submissions_col.find({"event_id": {"$in": event_id_variants}}).to_list(length=10000)
-    raw_scores = await scores_col.find({"event_id": {"$in": event_id_variants}}).to_list(length=10000)
-    sd_query: dict = {"event_id": {"$in": event_id_variants}}
+    raw_subs = await submissions_col.find({"event_id": {"$in": event_id_in}}).to_list(length=10000)
+    raw_scores = await scores_col.find({"event_id": {"$in": event_id_in}}).to_list(length=10000)
+    sd_query: dict = {"event_id": {"$in": event_id_in}}
     if stage_filter:
         sd_query["stage_id"] = stage_filter
     raw_sd = await submission_data_col.find(sd_query).to_list(length=10000)
@@ -1791,8 +1914,10 @@ def _score_sum(sc: dict) -> float:
 @router.get("/events/{event_id}/submissions")
 async def list_event_submissions_enriched(event_id: str, user: dict = Depends(get_auth_user)):
     """All submissions for an event with team labels, average judge score, and judge assignment emails."""
-    await assert_institution_owns_event(event_id, user)
-    cursor = submissions_col.find({"event_id": event_id})
+    event = await assert_institution_owns_event(event_id, user)
+    event_id_variants = await collect_event_id_variants(event_id, event)
+    event_filter = {"event_id": {"$in": event_id_variants}}
+    cursor = submissions_col.find(event_filter)
     out = []
     async for s in cursor:
         sid = str(s["_id"])
@@ -1859,7 +1984,7 @@ async def list_event_submissions_enriched(event_id: str, user: dict = Depends(ge
 
     # 3. Merge Stage / Phase Deliverables from submission_data_col
     try:
-        sd_cursor = submission_data_col.find({"event_id": event_id})
+        sd_cursor = submission_data_col.find(event_filter)
         async for sd in sd_cursor:
             sid = str(sd["_id"])
             if any(str(o.get("_id")) == sid for o in out):
@@ -1878,15 +2003,26 @@ async def list_event_submissions_enriched(event_id: str, user: dict = Depends(ge
             async for sc in sc_cursor:
                 totals.append(_score_sum(sc))
             total_score = round(sum(totals) / len(totals), 1) if totals else float(sd.get("total_score") or sd.get("score") or 0)
+            team_name = sd.get("team_name") or sd.get("user_name") or ""
+            tid = sd.get("team_id")
+            if tid and not team_name:
+                try:
+                    team_doc = await teams_col.find_one({"_id": ObjectId(str(tid))})
+                except Exception:
+                    team_doc = await teams_col.find_one({"team_id": str(tid)})
+                if team_doc:
+                    team_name = team_doc.get("team_name") or team_doc.get("name") or team_name
             out.append({
                 "_id": sid,
-                "event_id": event_id,
+                "event_id": sd.get("event_id") or event_id,
                 "user_id": sd.get("user_id", ""),
-                "team_name": sd.get("user_name") or "",
+                "team_id": sd.get("team_id"),
+                "team_name": team_name,
                 "status": sd.get("status", ""),
                 "submitted_at": sd.get("submitted_at").isoformat() if hasattr(sd.get("submitted_at"), "isoformat") else sd.get("submitted_at"),
                 "data": sd.get("data", {}),
                 "source": "stage_deliverable",
+                "stage_id": sd.get("stage_id", ""),
                 "stage_name": sd.get("stage_name", ""),
                 "stage_type": sd.get("stage_type", ""),
                 "total_score": total_score,
@@ -1898,6 +2034,91 @@ async def list_event_submissions_enriched(event_id: str, user: dict = Depends(ge
         logger.error(f"[SUBMISSIONS] Failed to merge stage deliverables: {e}")
 
     return out
+
+
+@router.get("/events/{event_id}/stage-leaderboard")
+async def get_stage_leaderboard(
+    event_id: str,
+    stage_id: Optional[str] = None,
+    user: dict = Depends(get_auth_user),
+):
+    """Ranked standings for a stage (or whole event) from judge scores on stage submissions."""
+    event = await assert_institution_owns_event(event_id, user)
+    variants = await collect_event_id_variants(event_id, event)
+    variant_in: list = list(variants)
+    for vid in variants:
+        if ObjectId.is_valid(vid):
+            try:
+                variant_in.append(ObjectId(vid))
+            except Exception:
+                pass
+
+    sd_query: dict = {"event_id": {"$in": variant_in}}
+    if stage_id:
+        sd_query["stage_id"] = str(stage_id).strip()
+    stage_docs = await submission_data_col.find(
+        sd_query,
+        {"_id": 1, "team_id": 1, "user_id": 1, "team_name": 1, "stage_id": 1, "stage_name": 1, "data": 1},
+    ).to_list(length=5000)
+
+    submission_meta: dict[str, dict] = {}
+    for doc in stage_docs:
+        sid = str(doc["_id"])
+        submission_meta[sid] = doc
+
+    score_query: dict = {"event_id": {"$in": variant_in}}
+    if stage_id:
+        score_query["stage_id"] = str(stage_id).strip()
+    scores = await scores_col.find(score_query).to_list(length=20000)
+
+    totals: dict[str, list[float]] = {}
+    for sc in scores:
+        sub_id = str(sc.get("submission_id") or "")
+        if not sub_id:
+            continue
+        val = sc.get("total_score")
+        if val is None and isinstance(sc.get("criteria_scores"), dict):
+            try:
+                val = sum(float(v) for v in sc["criteria_scores"].values())
+            except (TypeError, ValueError):
+                val = 0
+        if val is None:
+            val = sc.get("score") or 0
+        totals.setdefault(sub_id, []).append(float(val or 0))
+
+    rows = []
+    seen: set[str] = set()
+    for sid, doc in submission_meta.items():
+        seen.add(sid)
+        scores_list = totals.get(sid, [])
+        avg = round(sum(scores_list) / len(scores_list), 2) if scores_list else 0.0
+        data = doc.get("data") or {}
+        rows.append({
+            "submission_id": sid,
+            "team_name": doc.get("team_name") or data.get("team_display_name") or data.get("name") or f"Submission {sid[-6:]}",
+            "project_title": doc.get("stage_name") or data.get("title") or "",
+            "stage_id": doc.get("stage_id"),
+            "stage_name": doc.get("stage_name"),
+            "total_score": avg,
+            "judge_count": len(scores_list),
+        })
+
+    for sid, scores_list in totals.items():
+        if sid in seen:
+            continue
+        avg = round(sum(scores_list) / len(scores_list), 2) if scores_list else 0.0
+        rows.append({
+            "submission_id": sid,
+            "team_name": f"Submission {sid[-6:]}",
+            "project_title": "",
+            "total_score": avg,
+            "judge_count": len(scores_list),
+        })
+
+    rows.sort(key=lambda r: (-float(r.get("total_score") or 0), str(r.get("team_name") or "")))
+    for idx, row in enumerate(rows, start=1):
+        row["rank"] = idx
+    return rows
 
 
 @router.patch("/events/{event_id}/teams/{team_id}/selection")
@@ -2981,52 +3202,44 @@ async def get_judge_event_criteria(event_id: str, user: dict = Depends(get_auth_
     ]
 
 
+@router.get("/judge/my-invitations")
+async def judge_my_invitations(user: dict = Depends(get_auth_user)):
+    """Pending judge invitations for the logged-in account email."""
+    from services.judge_service import get_pending_invitations_for_email
+
+    email = (user.get("email") or "").strip().lower()
+    if not email:
+        raise HTTPException(status_code=400, detail="Account email required")
+    return await get_pending_invitations_for_email(email)
+
+
 @router.post("/judge/respond-invitation")
 async def judge_respond_invitation(body: dict, user: dict = Depends(get_auth_user)):
-    """Judge accepts or declines an event invitation (matched by account email). Creates an institution navbar notification."""
-    event_id = body.get("event_id")
-    if not event_id:
-        raise HTTPException(status_code=400, detail="event_id is required")
+    """Judge accepts or declines (matched by logged-in account email, not institution admin)."""
+    from services.judge_service import respond_judge_invitation
+
     accept = bool(body.get("accept", True))
     email = (user.get("email") or "").strip().lower()
     if not email:
         raise HTTPException(status_code=400, detail="Account email required")
-    event = await events_col.find_one({"_id": ObjectId(str(event_id))})
-    if not event:
-        raise HTTPException(status_code=404, detail="Event not found")
-    judges = list(event.get("judges") or [])
-    found = False
-    judge_name = email
-    for i, j in enumerate(judges):
-        je = str(j.get("email") or "").strip().lower()
-        if je == email:
-            found = True
-            judge_name = j.get("name") or email
-            judges[i] = {
-                **j,
-                "status": "ACCEPTED" if accept else "DECLINED",
-                "responded_at": datetime.now(timezone.utc).isoformat(),
-            }
-            break
-    if not found:
-        raise HTTPException(status_code=404, detail="No invitation found for your email on this event")
-    await events_col.update_one({"_id": ObjectId(str(event_id))}, {"$set": {"judges": judges}})
-    inst_id = event.get("institution_id")
-    title = event.get("title") or "Event"
-    if inst_id:
-        msg = (
-            f"Judge {judge_name} ({email}) accepted the invitation for \"{title}\"."
-            if accept
-            else f"Judge {judge_name} ({email}) declined the invitation for \"{title}\"."
-        )
-        await notify_institution(
-            str(inst_id),
-            msg,
-            ntype="judge_invitation_response",
-            title="Judge invitation update",
-            meta={"event_id": str(event_id), "accept": accept, "judge_email": email},
-        )
-    return {"status": "success", "accept": accept}
+
+    token = str(body.get("token") or "").strip()
+    event_id = body.get("event_id")
+    try:
+        if token:
+            return await respond_judge_invitation(token=token, accept=accept)
+        if event_id:
+            from db import judges_col
+            judge_doc = await judges_col.find_one({
+                "email": email,
+                "event_id": str(event_id),
+            })
+            if judge_doc and judge_doc.get("invitation_token"):
+                return await respond_judge_invitation(token=judge_doc["invitation_token"], accept=accept)
+            return await respond_judge_invitation(judge_email=email, event_id=str(event_id), accept=accept)
+        return await respond_judge_invitation(judge_email=email, accept=accept)
+    except LookupError:
+        raise HTTPException(status_code=404, detail="No invitation found for your email")
 
 
 @router.post("/judge/score")
@@ -4035,16 +4248,28 @@ async def upload_institution_media(
         mime = "image/webp"
     elif ext == ".gif":
         mime = "image/gif"
-    b64 = base64.b64encode(content).decode("utf-8")
-    data_url = f"data:{mime};base64,{b64}"
+    asset = "logo" if field == "logo_url" else "banner"
+    inst_dir = os.path.join(INSTITUTIONS_UPLOAD_DIR, inst_id)
+    os.makedirs(inst_dir, exist_ok=True)
+    for old in os.listdir(inst_dir):
+        if old.startswith(f"{asset}."):
+            try:
+                os.remove(os.path.join(inst_dir, old))
+            except Exception:
+                pass
+    dest_name = f"{asset}{ext}"
+    dest_path = os.path.join(inst_dir, dest_name)
+    with open(dest_path, "wb") as fh:
+        fh.write(content)
+    public_url = f"/api/v1/institution/profile/{inst_id}/media/{asset}"
 
     from db import institutions_col
     await institutions_col.update_one(
         {"institution_id": inst_id},
-        {"$set": {field: data_url}}
+        {"$set": {field: public_url, asset: public_url}}
     )
 
-    return {"url": data_url, "field": field}
+    return {"url": public_url, "field": field}
 
 
 @router.post("/events/{event_id}/stages")
@@ -4463,7 +4688,8 @@ async def add_event_judge(event_id: str, judge_data: dict, user: dict = Depends(
         "invitation_token": uuid.uuid4().hex,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
-    evaluation_url = f"{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/evaluate/{judge_record['invitation_token']}"
+    from services.judge_service import _judge_invitation_url
+    evaluation_url = _judge_invitation_url(judge_record["invitation_token"])
 
     result = await create_judge(judge_record)
 
@@ -4489,28 +4715,38 @@ async def add_event_judge(event_id: str, judge_data: dict, user: dict = Depends(
 
     judge_name = judge_data.get("name") or judge_data.get("email") or "Judge"
     event_title = event.get("title") or "Event"
+    accept_url = f"{evaluation_url}&action=accept"
+    decline_url = f"{evaluation_url}&action=decline"
+    judge_email = str(judge_data.get("email") or "").strip().lower()
     email_html = f"""
     <html>
     <body style="font-family: 'Poppins', sans-serif; background:#f8fafc; color:#0f172a; padding:24px;">
         <div style="max-width:640px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:20px;padding:32px;">
             <p style="margin:0 0 12px 0;font-size:18px;font-weight:800;">Hello {judge_name},</p>
-            <p style="margin:0 0 18px 0;line-height:1.7;color:#475569;">You have been invited to evaluate submissions for <strong>{event_title}</strong>.</p>
+            <p style="margin:0 0 18px 0;line-height:1.7;color:#475569;">You have been invited to evaluate submissions for <strong>{event_title}</strong>. Use <strong>{judge_email}</strong> when signing in.</p>
             <div style="background:#f5f3ff;border:1px solid #ddd6fe;border-radius:16px;padding:16px;margin:20px 0;">
-                <p style="margin:0;color:#6C3BFF;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;">Evaluation Link</p>
+                <p style="margin:0;color:#6C3BFF;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;">Invitation Link</p>
                 <p style="margin:8px 0 0 0;font-size:14px;color:#0f172a;word-break:break-all;">{evaluation_url}</p>
             </div>
-            <p style="margin:0 0 20px 0;line-height:1.7;color:#475569;">Open the link to review your assigned submission and submit your evaluation. If you need access later, you can return to the same link from this email.</p>
-            <a href="{evaluation_url}" style="display:inline-block;background:#6C3BFF;color:#fff;text-decoration:none;padding:14px 24px;border-radius:12px;font-weight:800;">Start Evaluation</a>
+            <div style="display:flex;gap:12px;flex-wrap:wrap;margin:24px 0;">
+                <a href="{accept_url}" style="display:inline-block;background:#059669;color:#fff;text-decoration:none;padding:14px 24px;border-radius:12px;font-weight:800;">Accept Invitation</a>
+                <a href="{decline_url}" style="display:inline-block;background:#f1f5f9;color:#475569;text-decoration:none;padding:14px 24px;border-radius:12px;font-weight:800;">Decline</a>
+            </div>
+            <p style="margin:0;color:#94a3b8;font-size:12px;line-height:1.6;">After accepting, sign in at the judge portal to review assigned submissions.</p>
         </div>
     </body>
     </html>
     """
 
     email_ok = await send_notification_email(judge_data.get("email"), f"Judge Invitation: {event_title}", email_html)
-    if not email_ok:
-        raise HTTPException(status_code=500, detail="Judge invitation saved but email could not be sent")
-    
-    return {"status": "success", "judge": judge_entry}
+
+    return {
+        "status": "success",
+        "judge": judge_entry,
+        "email_sent": email_ok,
+        "message": "Judge invitation saved."
+        + (" Email sent successfully." if email_ok else " Email could not be sent — share the evaluation link manually."),
+    }
 
 @router.delete("/events/{event_id}/judges/{judge_email}")
 async def remove_event_judge(event_id: str, judge_email: str, user: dict = Depends(get_auth_user)):
@@ -4551,56 +4787,18 @@ async def download_stage_submission_file(
 ):
     """Admin download of an uploaded stage file (avoids multi-MB JSON payloads)."""
     from fastapi.responses import Response
-    import base64
+    from services.submission_file_io import load_submission_field_file
 
     await assert_institution_owns_event(event_id, user)
-    from routes.registration_flow_routes import resolve_event_id
-
-    resolved = await resolve_event_id(event_id)
     sub = await submission_data_col.find_one({"_id": ObjectId(submission_id)})
     if not sub:
         raise HTTPException(status_code=404, detail="Submission not found")
-    if str(sub.get("event_id")) not in {str(event_id), str(resolved)}:
+    variants = await collect_event_id_variants(event_id)
+    if str(sub.get("event_id")) not in {str(v) for v in variants}:
         raise HTTPException(status_code=404, detail="Submission not found for this event")
 
-    data = sub.get("data") or {}
-    value = data.get(field_id)
-    mime = "application/octet-stream"
-    raw: bytes | None = None
-    filename = f"{field_id}.bin"
-
-    if isinstance(value, str) and value.startswith("data:"):
-        header, _, encoded = value.partition(",")
-        mime = header[5:].split(";")[0] if header.startswith("data:") else mime
-        try:
-            raw = base64.b64decode(encoded)
-        except Exception:
-            raise HTTPException(status_code=500, detail="Could not decode file")
-        ext = mime.split("/")[-1] if "/" in mime else "bin"
-        filename = f"{field_id}.{ext}"
-    elif isinstance(value, dict) and value.get("_stored_file"):
-        meta = value
-        mime = str(meta.get("mime_type") or meta.get("content_type") or mime)
-        filename = str(meta.get("filename") or filename)
-        storage_key = meta.get("storage_key") or meta.get("path")
-        if storage_key:
-            from pathlib import Path
-            upload_root = Path(os.getenv("UPLOAD_DIR", "uploads"))
-            file_path = upload_root / str(storage_key).lstrip("/")
-            if file_path.is_file():
-                raw = file_path.read_bytes()
-        if raw is None and meta.get("data_uri"):
-            data_uri = str(meta["data_uri"])
-            if data_uri.startswith("data:"):
-                header, _, encoded = data_uri.partition(",")
-                mime = header[5:].split(";")[0] if header.startswith("data:") else mime
-                try:
-                    raw = base64.b64decode(encoded)
-                except Exception:
-                    raise HTTPException(status_code=500, detail="Could not decode file")
-    else:
-        raise HTTPException(status_code=404, detail="File not found for this field")
-
+    value = (sub.get("data") or {}).get(field_id)
+    raw, mime, filename = load_submission_field_file(value, field_id)
     if raw is None:
         raise HTTPException(status_code=404, detail="File not found for this field")
     return Response(

@@ -95,6 +95,16 @@ const FilterDropdown = ({ label, options, value, onChange, onClear }: any) => {
     );
 };
 
+const formatOpportunityDateTime = (raw?: string) => {
+    if (!raw) return { date: '—', time: '' };
+    const d = new Date(raw);
+    if (Number.isNaN(d.getTime())) return { date: String(raw), time: '' };
+    return {
+        date: d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }),
+        time: `${d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' })} IST`,
+    };
+};
+
 const mapSummaryToEvents = (data: any[]) => data
     .filter((e: any) => e.category !== 'Job' && e.category !== 'Internship')
     .map((e: any) => {
@@ -119,8 +129,8 @@ const mapSummaryToEvents = (data: any[]) => data
             name: e.title,
             status: displayStatus,
             type: e.category || 'Event',
-            startDate: e.start_date || '',
-            endDate: e.end_date || '',
+            startDate: e.start_date || e.startDate || e.eventStartDate || '',
+            endDate: e.end_date || e.endDate || e.eventEndDate || e.registrationDeadline || e.deadline || '',
             participants: e.participant_count || 0,
             registrations: String(e.participant_count || 0),
             candidate: '',
@@ -344,16 +354,26 @@ const OpportunitiesManagement: React.FC<OpportunitiesManagementProps> = ({ insti
                                                 </span>
                                             </td>
                                             <td className="px-6 py-8 text-center">
-                                                <div className="space-y-0.5">
-                                                    <p className="text-sm font-black text-slate-700">{event.startDate}</p>
-                                                    <p className="text-[9px] font-bold text-slate-400">12:00 AM IST</p>
-                                                </div>
+                                                {(() => {
+                                                    const { date, time } = formatOpportunityDateTime(event.startDate);
+                                                    return (
+                                                        <div className="space-y-0.5">
+                                                            <p className="text-sm font-black text-slate-700">{date}</p>
+                                                            {time && <p className="text-[9px] font-bold text-slate-400">{time}</p>}
+                                                        </div>
+                                                    );
+                                                })()}
                                             </td>
                                             <td className="px-6 py-8 text-center">
-                                                <div className="space-y-0.5">
-                                                    <p className="text-sm font-black text-slate-700">{event.endDate}</p>
-                                                    <p className="text-[9px] font-bold text-slate-400">12:00 AM IST</p>
-                                                </div>
+                                                {(() => {
+                                                    const { date, time } = formatOpportunityDateTime(event.endDate);
+                                                    return (
+                                                        <div className="space-y-0.5">
+                                                            <p className="text-sm font-black text-slate-700">{date}</p>
+                                                            {time && <p className="text-[9px] font-bold text-slate-400">{time}</p>}
+                                                        </div>
+                                                    );
+                                                })()}
                                             </td>
                                             <td className="px-6 py-8 text-center text-sm font-bold text-slate-400">{event.candidate}</td>
                                             <td className="px-6 py-8 text-center text-sm font-black text-slate-700">{event.registrations}</td>

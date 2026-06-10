@@ -16,13 +16,22 @@ const JudgeInviteModal: React.FC<JudgeInviteModalProps> = ({ isOpen, onClose, on
         expertise: ''
     });
 
+    const resetForm = () => setFormData({ name: '', email: '', expertise: '' });
+
     if (!isOpen) return null;
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        if (formData.name && formData.expertise) {
-            onInvite(formData);
+        const email = formData.email.trim().toLowerCase();
+        if (formData.name && email && formData.expertise) {
+            onInvite({ ...formData, email });
+            resetForm();
         }
+    };
+
+    const handleClose = () => {
+        resetForm();
+        onClose();
     };
 
     return (
@@ -32,7 +41,7 @@ const JudgeInviteModal: React.FC<JudgeInviteModalProps> = ({ isOpen, onClose, on
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    onClick={onClose}
+                    onClick={handleClose}
                     className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
                 />
                 
@@ -47,7 +56,7 @@ const JudgeInviteModal: React.FC<JudgeInviteModalProps> = ({ isOpen, onClose, on
                             <h2 className="text-2xl font-black text-slate-900 tracking-tight">Invite External Judge</h2>
                             <p className="text-sm text-slate-500 font-medium">Add a professional evaluator to your panel</p>
                         </div>
-                        <button onClick={onClose} className="p-2 hover:bg-white rounded-full text-slate-400 transition-all shadow-sm">
+                        <button type="button" onClick={handleClose} className="p-2 hover:bg-white rounded-full text-slate-400 transition-all shadow-sm">
                             <X size={20} />
                         </button>
                     </div>
@@ -66,6 +75,23 @@ const JudgeInviteModal: React.FC<JudgeInviteModalProps> = ({ isOpen, onClose, on
                                         value={formData.name}
                                         onChange={(e) => setFormData({...formData, name: e.target.value})}
                                         placeholder="e.g. Dr. Sarah Chen"
+                                        className="w-full pl-12 pr-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:ring-2 focus:ring-[#6C3BFF]/10 focus:border-[#6C3BFF] transition-all font-medium"
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-[11px] font-black text-slate-400 uppercase tracking-widest mb-2 px-1">Email Address</label>
+                                <div className="relative">
+                                    <div className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300">
+                                        <Mail size={18} />
+                                    </div>
+                                    <input
+                                        type="email"
+                                        required
+                                        value={formData.email}
+                                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                                        placeholder="judge@university.edu"
                                         className="w-full pl-12 pr-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:ring-2 focus:ring-[#6C3BFF]/10 focus:border-[#6C3BFF] transition-all font-medium"
                                     />
                                 </div>
@@ -92,7 +118,7 @@ const JudgeInviteModal: React.FC<JudgeInviteModalProps> = ({ isOpen, onClose, on
                         <div className="pt-4 flex gap-3">
                             <button 
                                 type="button"
-                                onClick={onClose}
+                                onClick={handleClose}
                                 className="flex-1 py-4 bg-slate-100 text-slate-600 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-200 transition-all"
                             >
                                 Cancel

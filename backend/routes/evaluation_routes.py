@@ -222,42 +222,18 @@ async def submit_evaluation(
 @router.get("/{token_or_id}/file/{field_id}")
 async def download_evaluation_file(token_or_id: str, field_id: str):
     """Download a submission file for judges using their evaluation token (no login)."""
-    import base64
-    import os
-    from pathlib import Path
     from fastapi.responses import Response
 
     submission, _ = await _find_submission_by_token(token_or_id)
     if not submission:
         raise HTTPException(status_code=404, detail="Invalid or expired evaluation link")
 
+    from services.submission_file_io import load_submission_field_file
+
     value = (submission.get("data") or {}).get(field_id)
-    mime = "application/octet-stream"
-    raw: bytes | None = None
-    filename = f"{field_id}.bin"
-
-    if isinstance(value, str) and value.startswith("data:"):
-        header, _, encoded = value.partition(",")
-        mime = header[5:].split(";")[0] if header.startswith("data:") else mime
-        try:
-            raw = base64.b64decode(encoded)
-        except Exception:
-            raise HTTPException(status_code=500, detail="Could not decode file")
-        ext = mime.split("/")[-1] if "/" in mime else "bin"
-        filename = f"{field_id}.{ext}"
-    elif isinstance(value, dict) and value.get("_stored_file"):
-        meta = value
-        mime = str(meta.get("mime") or meta.get("mime_type") or mime)
-        filename = str(meta.get("filename") or filename)
-        storage_key = meta.get("storage_key") or meta.get("path")
-        if storage_key:
-            upload_root = Path(os.getenv("UPLOAD_DIR", "uploads"))
-            file_path = upload_root / str(storage_key).lstrip("/")
-            if file_path.is_file():
-                raw = file_path.read_bytes()
-    elif isinstance(value, str) and value.startswith("http"):
+    if isinstance(value, str) and value.startswith("http"):
         raise HTTPException(status_code=400, detail="External URL — open link in browser")
-
+    raw, mime, filename = load_submission_field_file(value, field_id)
     if raw is None:
         raise HTTPException(status_code=404, detail="File not found")
 

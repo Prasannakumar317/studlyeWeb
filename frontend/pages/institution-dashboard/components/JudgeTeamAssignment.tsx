@@ -21,7 +21,7 @@ interface Judge {
     expertise: string[];
     assigned: boolean;
     currentLoad: number;
-    maxLoad: number;
+    assignmentCount?: number;
     institutionId: string;
     institutionName: string;
     department?: string;
@@ -465,21 +465,10 @@ const JudgeTeamAssignment: React.FC<JudgeTeamAssignmentProps> = ({
                                             )}
                                         </div>
                                         <div className="flex items-center gap-2 mt-1">
-                                            <span className="text-xs text-slate-400">
-                                                Load: {currentAssignments}/{judge.maxLoad}
+                                            <span className="text-xs font-bold text-purple-600">
+                                                {(judge.assignmentCount ?? judge.currentLoad ?? 0) + currentAssignments} assigned
+                                                {currentAssignments > 0 ? ` (+${currentAssignments} pending)` : ''}
                                             </span>
-                                            <div className="flex-1 bg-slate-100 rounded-full h-1.5">
-                                                <div 
-                                                    className={`h-1.5 rounded-full transition-all ${
-                                                        currentAssignments >= judge.maxLoad 
-                                                            ? 'bg-red-500' 
-                                                            : currentAssignments >= judge.maxLoad * 0.7 
-                                                            ? 'bg-yellow-500' 
-                                                            : 'bg-green-500'
-                                                    }`}
-                                                    style={{ width: `${Math.min((currentAssignments / judge.maxLoad) * 100, 100)}%` }}
-                                                />
-                                            </div>
                                         </div>
                                         <div className="flex flex-wrap gap-1 mt-2">
                                             {judge.expertise.map(exp => (

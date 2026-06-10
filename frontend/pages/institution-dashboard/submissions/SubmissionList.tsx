@@ -920,7 +920,9 @@ const SubmissionList: React.FC<SubmissionListProps> = ({ institutionId }) => {
                             </div>
                             
                             <div className="p-10 space-y-6 max-h-[50vh] overflow-y-auto custom-scrollbar">
-                                {availableJudges.length > 0 ? availableJudges.map((judge) => {
+                                {availableJudges.length > 0 ? [...availableJudges]
+                                    .sort((a: any, b: any) => (a.assignment_count ?? 0) - (b.assignment_count ?? 0))
+                                    .map((judge) => {
                                     // Robust evaluation link generation for manual sharing
                                     const currentSub = submissions.all?.find((s: any) => 
                                         (String(s.submission_id) === String(judgeAssignmentModal.submissionId) || 
@@ -935,6 +937,9 @@ const SubmissionList: React.FC<SubmissionListProps> = ({ institutionId }) => {
                                                 <div>
                                                     <p className="font-black text-slate-900">{judge.full_name || judge.name}</p>
                                                     <p className="text-xs font-bold text-slate-400">{judge.email}</p>
+                                                    <p className="text-[9px] font-black text-purple-600 uppercase tracking-widest mt-1">
+                                                        {judge.assignment_count ?? 0} assigned
+                                                    </p>
                                                 </div>
                                             </div>
                                             <div className="flex items-center gap-2">

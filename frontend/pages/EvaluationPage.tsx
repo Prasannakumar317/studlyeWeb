@@ -4,6 +4,13 @@ import { Eye, ExternalLink, Save, Gavel, Users, Calendar, FileText, X, Download,
 import { motion, AnimatePresence } from 'framer-motion';
 import { API_BASE_URL } from '../apiConfig';
 import { useAuth } from '../AuthContext';
+import FilePreviewPanel from '../components/FilePreviewPanel';
+import {
+    buildPreviewFilename,
+    cacheSubmissionFile,
+    getCachedSubmissionFile,
+    getFileTypeBadge,
+} from '../utils/submissionFilePreview';
 
 const EvaluationPage: React.FC = () => {
     const { token } = useParams<{ token: string }>();
@@ -19,8 +26,36 @@ const EvaluationPage: React.FC = () => {
     const [comments, setComments] = useState('');
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
-    const [previewAsset, setPreviewAsset] = useState<{ url: string; filename: string } | null>(null);
+    const [previewAsset, setPreviewAsset] = useState<{ url: string; filename: string; loading?: boolean; mime?: string } | null>(null);
     const [criteriaScores, setCriteriaScores] = useState<Record<string, number>>({});
+
+    const openEvaluationFile = async (fieldId: string, filenameHint?: string, mimeHint?: string) => {
+        if (!token) return;
+        const cacheKey = `eval:${token}:${fieldId}`;
+        const cached = getCachedSubmissionFile(cacheKey);
+        if (cached) {
+            setPreviewAsset({ url: cached.url, filename: cached.filename, mime: cached.mime });
+            return;
+        }
+        setPreviewAsset({ url: '', filename: filenameHint || fieldId, loading: true });
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/evaluation/${token}/file/${encodeURIComponent(fieldId)}`, { cache: 'no-store' });
+            if (!res.ok) {
+                setPreviewAsset(null);
+                alert('Could not open file.');
+                return;
+            }
+            const blob = await res.blob();
+            const mime = blob.type || mimeHint || 'application/octet-stream';
+            const filename = buildPreviewFilename(filenameHint || fieldId, mime, filenameHint);
+            const url = window.URL.createObjectURL(blob);
+            cacheSubmissionFile(cacheKey, { url, filename, mime });
+            setPreviewAsset({ url, filename, mime });
+        } catch {
+            setPreviewAsset(null);
+            alert('Network error while opening file.');
+        }
+    };
 
     // No forced redirect - allow judges to use the direct evaluation page
     // even if they are logged in. This prevents access issues if they
@@ -261,17 +296,21 @@ const EvaluationPage: React.FC = () => {
                                 {Object.entries(submission.data).map(([key, val]: [string, any]) => {
                                     if (['file_url', 'filename', 'url', 'description'].includes(key)) return null;
                                     if (val && typeof val === 'object' && val._stored_file) {
-                                        const fileUrl = `${API_BASE_URL}/api/evaluation/${token}/file/${encodeURIComponent(key)}`;
+                                        const badge = getFileTypeBadge(val.filename || key, val.mime || '');
                                         return (
                                             <div key={key} className="flex items-center gap-4 p-4 bg-slate-50 rounded-xl">
                                                 <FileText size={20} className="text-slate-500" />
                                                 <div className="flex-1">
                                                     <p className="font-medium text-slate-900">{val.filename || key}</p>
-                                                    <p className="text-sm text-slate-500">Uploaded deliverable</p>
+                                                    <p className="text-sm text-slate-500">{badge} · Uploaded deliverable</p>
                                                 </div>
-                                                <a href={fileUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700">
-                                                    <Download size={16} /> View
-                                                </a>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => openEvaluationFile(key, val.filename, val.mime)}
+                                                    className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+                                                >
+                                                    <Eye size={16} /> Preview {badge}
+                                                </button>
                                             </div>
                                         );
                                     }
@@ -526,108 +565,13 @@ const EvaluationPage: React.FC = () => {
                             </div>
                             <div className="flex-1 bg-slate-100 p-8 relative">
                                 <div className="w-full h-full rounded-[2rem] overflow-hidden shadow-2xl bg-white relative">
-                                    {/* File Preview by type */}
-                                    {previewAsset.filename.toLowerCase().match(/\.(pdf)$/) ? (
-                                        <iframe 
-                                            src={previewAsset.url}
-                                            className="w-full h-full border-none"
-                                            title="PDF Preview"
-                                        />
-                                    ) : previewAsset.filename.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp|svg)$/) ? (
-                                        <img 
-                                            src={previewAsset.url}
-                                            className="w-full h-full object-contain"
-                                            alt={previewAsset.filename}
-                                        />
-                                    ) : previewAsset.filename.toLowerCase().match(/\.(mp4|webm|mov)$/) ? (
-                                        <video 
-                                            src={previewAsset.url}
-                                            controls
-                                            className="w-full h-full"
-                                        />
-                                    ) : previewAsset.filename.toLowerCase().match(/\.(pptx|ppt|docx|doc|xlsx|xls)$/) ? (
-                                        <div className="w-full h-full flex flex-col bg-slate-50 relative">
-                                            <div className="absolute inset-0 flex items-center justify-center -z-0">
-                                                <div className="w-12 h-12 border-4 border-slate-200 border-t-[#6C3BFF] rounded-full animate-spin"></div>
-                                            </div>
-                                            <iframe 
-                                                src={`https://docs.google.com/viewer?url=${encodeURIComponent(previewAsset.url)}&embedded=true`}
-                                                className="flex-1 w-full border-none bg-white relative z-10"
-                                                title="Office Preview"
-                                            />
-                                            <div className="p-4 bg-white border-t border-slate-100 flex items-center justify-between px-8">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="w-8 h-8 bg-orange-50 rounded-lg flex items-center justify-center text-orange-600 font-black text-xs">PPT</div>
-                                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Document Intelligence Protocol Active</span>
-                                                </div>
-                                                <div className="flex gap-2">
-                                                    <a 
-                                                        href={`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(previewAsset.url)}`}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className="px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-slate-900 hover:text-white transition-all"
-                                                    >
-                                                        Alternative Viewer (MS Office)
-                                                    </a>
-                                                </div>
-                                            </div>
-                                            {/* Localhost / Offline Fallback */}
-                                            {previewAsset.url.includes('localhost') && (
-                                                <div className="absolute inset-0 z-20 bg-white/90 backdrop-blur-sm flex items-center justify-center p-12 text-center">
-                                                    <div className="max-w-md space-y-6">
-                                                        <div className="w-20 h-20 bg-amber-50 rounded-[2rem] flex items-center justify-center text-4xl mx-auto shadow-inner">🚧</div>
-                                                        <div className="space-y-2">
-                                                            <h4 className="text-xl font-black text-slate-900 uppercase tracking-tight">Localhost Preview Blocked</h4>
-                                                            <p className="text-sm text-slate-500 leading-relaxed font-medium">
-                                                                Cloud viewers (Google/Microsoft) cannot access files stored on your local machine (localhost).
-                                                            </p>
-                                                        </div>
-                                                        <div className="flex flex-col gap-3">
-                                                            <a 
-                                                                href={previewAsset.url} 
-                                                                target="_blank"
-                                                                rel="noopener noreferrer"
-                                                                className="w-full py-4 bg-[#6C3BFF] text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-xl shadow-purple-500/20"
-                                                            >
-                                                                Open File Directly
-                                                            </a>
-                                                            <a 
-                                                                href={previewAsset.url} 
-                                                                download
-                                                                className="w-full py-4 bg-slate-900 text-white rounded-2xl text-xs font-black uppercase tracking-widest"
-                                                            >
-                                                                Download & View
-                                                            </a>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            )}
+                                    {previewAsset.loading ? (
+                                        <div className="w-full h-full flex flex-col items-center justify-center gap-4">
+                                            <div className="w-10 h-10 border-4 border-[#6C3BFF] border-t-transparent rounded-full animate-spin" />
+                                            <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Loading preview…</p>
                                         </div>
                                     ) : (
-                                        <div className="flex flex-col items-center justify-center h-full gap-6 p-8 text-center">
-                                            <div className="w-24 h-24 bg-slate-50 rounded-3xl flex items-center justify-center text-5xl">📁</div>
-                                            <div>
-                                                <p className="text-2xl font-black text-slate-900">{previewAsset.filename}</p>
-                                                <p className="text-slate-500 mt-2">Interactive preview not available for this file type.</p>
-                                            </div>
-                                            <div className="flex gap-4">
-                                                <a 
-                                                    href={previewAsset.url} 
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="px-10 py-5 bg-[#6C3BFF] text-white rounded-2xl text-sm font-black uppercase tracking-widest shadow-xl transition-all"
-                                                >
-                                                    Open Original
-                                                </a>
-                                                <a 
-                                                    href={previewAsset.url} 
-                                                    download
-                                                    className="px-10 py-5 bg-slate-900 text-white rounded-2xl text-sm font-black uppercase tracking-widest shadow-xl transition-all"
-                                                >
-                                                    Download File
-                                                </a>
-                                            </div>
-                                        </div>
+                                        <FilePreviewPanel url={previewAsset.url} filename={previewAsset.filename} mime={previewAsset.mime} />
                                     )}
                                 </div>
                             </div>

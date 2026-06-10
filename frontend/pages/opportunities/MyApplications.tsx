@@ -14,7 +14,7 @@ type ApplicationRow = {
     event_id?: string;
 };
 
-type NotifRow = { _id: string; message?: string; is_read?: boolean; created_at?: string; type?: string };
+type NotifRow = { _id: string; title?: string; message?: string; is_read?: boolean; created_at?: string; type?: string; meta?: { opportunity_id?: string } };
 
 const MyApplications: React.FC = () => {
     const { user, loading: authLoading } = useAuth();
@@ -154,7 +154,10 @@ const MyApplications: React.FC = () => {
                                         key={n._id}
                                         className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 rounded-2xl bg-purple-50/50 border border-purple-100"
                                     >
-                                        <p className="text-sm font-bold text-slate-800">{n.message}</p>
+                                        <div>
+                                            {n.title ? <p className="text-sm font-black text-slate-900">{n.title}</p> : null}
+                                            <p className="text-sm font-bold text-slate-700">{n.message}</p>
+                                        </div>
                                         <button
                                             type="button"
                                             onClick={() => markRead(n._id)}
