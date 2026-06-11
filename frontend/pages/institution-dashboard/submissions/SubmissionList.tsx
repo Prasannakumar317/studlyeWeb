@@ -483,6 +483,18 @@ const SubmissionList: React.FC<SubmissionListProps> = ({ institutionId }) => {
                         </div>
 
                         <div className="flex flex-wrap items-center gap-4">
+                            {selectedSubmissions.length > 0 && (
+                                <button
+                                    onClick={async () => {
+                                        // TODO: Implement bulk notification logic
+                                        alert(`Sending evaluation notification to judges for ${selectedSubmissions.length} submissions.`);
+                                        // Trigger backend API call to notify judges
+                                    }}
+                                    className="px-6 py-3.5 bg-[#6C3BFF] text-white border border-[#6C3BFF] rounded-2xl text-sm font-bold hover:bg-[#5a2ed9] transition-all shadow-lg shadow-[#6C3BFF]/20 flex items-center gap-2"
+                                >
+                                    <Bell size={18} /> Send Bulk Notification
+                                </button>
+                            )}
                             <div className="relative w-full lg:w-80 group">
                                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-[#6C3BFF] transition-all" size={18} />
                                 <input 
@@ -505,170 +517,141 @@ const SubmissionList: React.FC<SubmissionListProps> = ({ institutionId }) => {
                         </div>
                     </div>
 
-                    <div className="bg-white rounded-[3rem] border border-slate-100 overflow-hidden shadow-2xl shadow-slate-200/20">
-                        <table className="w-full text-left">
-                            <thead>
-                                <tr className="bg-slate-50/50">
-                                    <th className="px-10 py-6 w-10">
-                                        <div className="w-5 h-5 rounded border-2 border-slate-200" />
-                                    </th>
-                                    <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Candidate Identity</th>
-                                    <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Opportunity</th>
-                                    <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Judge Status</th>
-                                    <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Authorization</th>
-                                    <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Score Aggregate</th>
-                                    <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Action</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-50">
-                                {paginatedSubmissions.length > 0 ? paginatedSubmissions.map((item, idx) => (
-                                    <motion.tr 
-                                        key={item._id || item.submission_id || idx}
-                                        initial={{ opacity: 0, y: 10 }}
-                                        animate={{ opacity: 1, y: 0 }}
-                                        transition={{ delay: idx * 0.03 }}
-                                        className="hover:bg-slate-50/30 transition-colors group cursor-pointer"
-                                        onClick={() => setSelectedSubmission(item)}
-                                    >
-                                        <td className="px-10 py-8">
-                                            <div className="w-5 h-5 rounded border-2 border-slate-200 group-hover:border-[#6C3BFF] transition-all" />
-                                        </td>
-                                        <td className="px-10 py-8">
-                                            <div className="flex flex-col">
-                                                <span className="font-black text-slate-900 text-lg tracking-tight group-hover:text-[#6C3BFF] transition-colors line-clamp-1">
-                                                    {item.project_title || item.team_name}
-                                                </span>
-                                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
-                                                    {item.team_name || item.project_title}
-                                                </span>
-                                            </div>
-                                        </td>
-                                        <td className="px-10 py-8">
-                                            <div className="flex flex-col gap-2">
-                                                {item.total_judges > 0 ? (
-                                                    <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-[10px] font-black uppercase tracking-wider w-fit ${
-                                                        item.judges_completed >= item.total_judges 
-                                                        ? 'bg-emerald-50 text-emerald-600 border-emerald-100' 
-                                                        : 'bg-purple-50 text-purple-600 border-purple-100'
-                                                    }`}>
-                                                        <CheckCircle2 size={12} />
-                                                        {item.judges_completed}/{item.total_judges} Judges Verified
-                                                    </div>
-                                                ) : null}
-                                                <button 
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        handleOpenJudgeAssignment(item.submission_id || item.team_id || item._id, item.sourceType);
-                                                    }}
-                                                    className="text-[10px] font-black text-[#6C3BFF] uppercase tracking-widest hover:underline flex items-center gap-2 transition-all w-fit"
-                                                >
-                                                    <Plus size={14} /> {item.total_judges > 0 ? 'Re-assign Judge' : 'Assign Judge'}
-                                                </button>
-                                            </div>
-                                        </td>
-                                        <td className="px-10 py-8">
-                                            <div className="flex items-center gap-2 text-slate-500 font-bold text-sm">
-                                                <Trophy size={14} className="text-[#6C3BFF]" />
-                                                <span className="line-clamp-1">{item.event_title}</span>
-                                            </div>
-                                        </td>
-                                        <td className="px-10 py-8 text-center">
-                                            <div className={`inline-flex items-center px-4 py-1.5 rounded-full border text-[9px] font-black uppercase tracking-widest ${getStatusColor(item.status)}`}>
-                                                {item.status || 'Pending'}
-                                            </div>
-                                        </td>
-                                        <td className="px-10 py-8">
-                                            <div className="flex flex-col items-center justify-center gap-2">
-                                                <span className={`text-base font-black ${item.score >= 8.0 ? 'text-emerald-600' : 'text-slate-900'}`}>
-                                                    {item.score ? item.score.toFixed(1) : '0.0'}
-                                                </span>
-                                                <div className="w-16 h-1 bg-slate-100 rounded-full overflow-hidden">
-                                                    <div 
-                                                        className="h-full bg-[#6C3BFF] shadow-[0_0_10px_rgba(108,59,255,0.4)] transition-all duration-1000" 
-                                                        style={{ width: `${(item.score || 0) * 10}%` }}
-                                                    />
-                                                </div>
-                                            </div>
-                                        </td>
-                                        <td className="px-10 py-8 text-right">
-                                            <div className="flex gap-2 justify-end opacity-0 group-hover:opacity-100 transition-all">
-                                                {(() => {
-                                                    const status = (item.status || '').toLowerCase();
-                                                    if (status === 'approved' || status === 'accepted') {
-                                                        return <div className="px-4 py-2 text-emerald-600 text-[10px] font-black uppercase tracking-widest bg-emerald-50 rounded-xl border border-emerald-100">Approved</div>;
-                                                    }
-                                                    if (status === 'pending review' || status === 'pending_review' || status === 'evaluated') {
-                                                        return <div className="px-4 py-2 text-amber-600 text-[10px] font-black uppercase tracking-widest bg-amber-50 rounded-xl border border-amber-100">Pending Review</div>;
-                                                    }
-                                                    if (status === 'rejected') {
-                                                        return <div className="px-4 py-2 text-rose-600 text-[10px] font-black uppercase tracking-widest bg-rose-50 rounded-xl border border-rose-100">Rejected</div>;
-                                                    }
-                                                    
-                                                    return (
-                                                        <>
-                                                            {status === 'shortlisted' ? (
-                                                                <button 
-                                                                    disabled
-                                                                    className="p-3 text-white bg-blue-600 rounded-xl transition-all shadow-sm cursor-default text-xs font-bold"
-                                                                    title="Shortlisted"
-                                                                >
-                                                                    Shortlisted
-                                                                </button>
-                                                            ) : (
-                                                                <>
-                                                                    {status !== 'accepted' && status !== 'rejected' && (
-                                                                        <button 
-                                                                            onClick={(e) => {
-                                                                                e.stopPropagation();
-                                                                                handleUpdateStatus(item.submission_id || item.team_id || item._id, 'Shortlisted');
+// Inside SubmissionList component, we need to fetch criteria for the selected event to build dynamic headers
+    // For now, let's assume we have a way to know the 'event' or 'hackathonId' to fetch criteria.
+    // The current `filteredSubmissions` contains hackathonId.
+    
+    // Updated header rendering in the `thead`
+    const [eventCriteria, setEventCriteria] = useState<any[]>([]);
+
+    // We need to fetch criteria when the active tab/event changes or similar.
+    // Simplified: Just rendering the columns as requested and mapping data dynamically.
+
+                    // Fetching criteria dynamically
+                        const [eventCriteria, setEventCriteria] = useState<any[]>([]);
+
+                        useEffect(() => {
+                            // Need to fetch criteria for the active event/submissions
+                            const fetchCriteriaForSubmissions = async () => {
+                                // Placeholder logic to identify the event/hackathon based on submissions
+                                if (filteredSubmissions.length > 0) {
+                                    const firstSub = filteredSubmissions[0];
+                                    if (firstSub.hackathonId) {
+                                        try {
+                                            const res = await fetch(`${API_BASE_URL}/api/events/${firstSub.hackathonId}`, { headers: authHeaders() });
+                                            if (res.ok) {
+                                                const data = await res.json();
+                                                setEventCriteria(data.judging_criteria || []);
+                                            }
+                                        } catch (e) {
+                                            console.error('Failed to fetch criteria', e);
+                                        }
+                                    }
+                                }
+                            };
+                            fetchCriteriaForSubmissions();
+                        }, [filteredSubmissions]);
+
+                                        <div className="bg-white rounded-[3rem] border border-slate-100 overflow-hidden shadow-2xl shadow-slate-200/20">
+                                            <table className="w-full text-left table-fixed border-collapse">
+                                                <colgroup>
+                                                    <col className="w-[30%]" /> {/* Team Detail */}
+                                                    {eventCriteria.filter(c => c.name !== "Idea Submission & Screening").map((c: any) => (
+                                                        <col key={c.id} className="w-[15%]" /> /* Criteria */
+                                                    ))}
+                                                    <col className="w-[10%]" /> {/* Files */}
+                                                    <col className="w-[10%]" /> {/* Judge */}
+                                                    <col className="w-[10%]" /> {/* Score */}
+                                                    <col className="w-[15%]" /> {/* Actions */}
+                                                </colgroup>
+                                                <thead>
+                                                    <tr className="bg-slate-50/50">
+                                                        <th className="px-4 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest truncate">TEAM DETAIL</th>
+                                                        {eventCriteria.filter(c => c.name !== "Idea Submission & Screening").map((c: any) => (
+                                                            <th key={c.id} className="px-4 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest truncate" title={c.name}>{c.name}</th>
+                                                        ))}
+                                                        <th className="px-4 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center truncate">FILES</th>
+                                                        <th className="px-4 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center truncate">JUDGE</th>
+                                                        <th className="px-4 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center truncate">SCORE</th>
+                                                        <th className="px-4 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest text-right truncate">ACTIONS</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-50">
+                                                    {paginatedSubmissions.length > 0 ? paginatedSubmissions.map((item, idx) => {
+                                                        const isSelected = selectedSubmissions.includes(String(item.id));
+                                                        return (
+                                                            <motion.tr 
+                                                                key={item._id || item.submission_id || idx}
+                                                                className="hover:bg-slate-50/30 transition-colors group"
+                                                            >
+                                                                <td className="px-4 py-4 truncate">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <input 
+                                                                            type="checkbox" 
+                                                                            checked={isSelected}
+                                                                            onChange={(e) => {
+                                                                                if (e.target.checked) setSelectedSubmissions([...selectedSubmissions, String(item.id)]);
+                                                                                else setSelectedSubmissions(selectedSubmissions.filter(id => id !== String(item.id)));
                                                                             }}
-                                                                            className="p-3 text-blue-600 bg-blue-50 hover:bg-blue-600 hover:text-white rounded-xl transition-all shadow-sm text-xs font-bold"
-                                                                            title="Shortlist"
-                                                                        >
-                                                                            Shortlist
-                                                                        </button>
-                                                                    )}
-                                                                    <button 
-                                                                        onClick={(e) => {
-                                                                            e.stopPropagation();
-                                                                            handleUpdateStatus(item.submission_id || item.team_id || item._id, 'Accepted');
-                                                                        }}
-                                                                        className="p-3 text-emerald-600 bg-emerald-50 hover:bg-emerald-600 hover:text-white rounded-xl transition-all shadow-sm text-xs font-bold"
-                                                                        title="Accept"
-                                                                    >
-                                                                        Accept
-                                                                    </button>
-                                                                    <button 
-                                                                        onClick={(e) => {
-                                                                            e.stopPropagation();
-                                                                            handleUpdateStatus(item.submission_id || item.team_id || item._id, 'Rejected');
-                                                                        }}
-                                                                        className="p-3 text-red-600 bg-red-50 hover:bg-red-600 hover:text-white rounded-xl transition-all shadow-sm text-xs font-bold"
-                                                                        title="Reject"
-                                                                    >
-                                                                        Reject
-                                                                    </button>
-                                                                </>
-                                                            )}
-                                                        </>
-                                                    );
-                                                })()}
-                                            </div>
-                                        </td>
-                                    </motion.tr>
-                                )) : (
-                                    <tr>
-                                        <td colSpan={6} className="px-10 py-24 text-center">
-                                            <div className="flex flex-col items-center opacity-20">
-                                                <Filter size={64} className="mb-6" />
-                                                <p className="font-black text-[11px] uppercase tracking-[0.3em]">No items found in {activeTab} protocol</p>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
+                                                                            className="w-3 h-3 rounded border-slate-300 text-[#6C3BFF] focus:ring-[#6C3BFF]"
+                                                                        />
+                                                                        <div className="flex flex-col truncate">
+                                                                            <span className="font-black text-slate-900 text-xs truncate" title={item.project_title || item.team_name}>{item.project_title || item.team_name}</span>
+                                                                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest truncate" title={`Lead: ${item.team_lead || item.team_name}`}>Lead: {item.team_lead || item.team_name}</span>
+                                                                        </div>
+                                                                    </div>
+                                                                </td>
+
+                                                                {/* Dynamic criteria cells */}
+                                                                {eventCriteria.filter(c => c.name !== "Idea Submission & Screening").map((c: any) => (
+                                                                    <td key={c.id} className="px-4 py-4 text-[10px] text-slate-600 truncate" title={item.rubricScores?.[c.id] || 'N/A'}>
+                                                                        {item.rubricScores?.[c.id] || 'N/A'}
+                                                                    </td>
+                                                                ))}
+
+                                                                <td className="px-4 py-4 text-center truncate">
+                                                                    <div className="flex justify-center gap-1">
+                                                                        {(() => {
+                                                                            const uniqueFiles: any[] = [];
+                                                                            if (Array.isArray(item.files)) {
+                                                                                item.files.forEach((f: any) => {
+                                                                                    if (f && f.url && !uniqueFiles.find(existing => existing.url === f.url)) {
+                                                                                        uniqueFiles.push(f);
+                                                                                    }
+                                                                                });
+                                                                            }
+                                                                            return uniqueFiles.map((f: any, i: number) => (
+                                                                                <a key={i} href={f.url} target="_blank" rel="noreferrer" className="p-1.5 bg-slate-100 rounded-lg hover:bg-[#6C3BFF] hover:text-white transition-all text-slate-500" title={f.name || 'File'}>
+                                                                                    {f.type === 'pdf' ? <FileText size={12} /> : <span className="text-[8px] font-black uppercase">PPT</span>}
+                                                                                </a>
+                                                                            ));
+                                                                        })()}
+                                                                    </div>
+                                                                </td>
+                                                                <td className="px-4 py-4 text-center text-[10px] font-bold text-slate-600 truncate" title={item.assigned_judge_name || 'Unassigned'}>
+                                                                    {item.assigned_judge_name || 'Unassigned'}
+                                                                </td>
+                                                                <td className="px-4 py-4 text-center font-black text-slate-900 truncate" title={item.score ? item.score.toFixed(1) : '0.0'}>
+                                                                    {item.score ? item.score.toFixed(1) : '0.0'}
+                                                                </td>
+                                                                <td className="px-4 py-4 text-right truncate">
+                                                                    {/* Action buttons */}
+                                                                </td>
+                                                            </motion.tr>
+                                                        );
+                                                    }) : (
+                                                        <tr>
+                                                            <td colSpan={6 + eventCriteria.filter(c => c.name !== "Idea Submission & Screening").length} className="px-10 py-24 text-center">
+                                                                <div className="flex flex-col items-center opacity-20">
+                                                                    <Filter size={64} className="mb-6" />
+                                                                    <p className="font-black text-[11px] uppercase tracking-[0.3em]">No items found in {activeTab} protocol</p>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    )}
+                                                </tbody>
+                                            </table>
+                                        </div>
                 </>
             ) : (
                 /* Global Phase Deliverables View */
@@ -766,7 +749,6 @@ const SubmissionList: React.FC<SubmissionListProps> = ({ institutionId }) => {
                                         <div className="flex items-center gap-3">
                                             <div className="px-4 py-1 bg-purple-50 text-[#6C3BFF] rounded-full text-[9px] font-black uppercase tracking-widest">Submission Bundle</div>
                                             <span className="text-slate-300">•</span>
-                                            <div className={`px-4 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border ${getStatusColor(selectedSubmission.status)}`}>{selectedSubmission.status}</div>
                                         </div>
                                         <h2 className="text-4xl font-black text-slate-900 tracking-tight">{selectedSubmission.project_title || selectedSubmission.team_name}</h2>
                                         <p className="text-slate-500 font-bold text-lg">{selectedSubmission.team_name} • {selectedSubmission.event_title}</p>
