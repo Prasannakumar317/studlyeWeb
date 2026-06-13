@@ -1,55 +1,55 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { API_BASE_URL, authHeaders } from '../../apiConfig';
 import EmailTemplatesManager from './components/EmailTemplatesManager';
-import { 
-    ArrowLeft, 
-    Save, 
-    X, 
-    ChevronLeft, 
-    UsersRound, 
-    Link as LinkIcon, 
-    Loader2, 
-    Upload, 
-    FileText, 
-    CheckCircle2, 
-    Clock, 
-    Trophy, 
-    Share2, 
-    Copy, 
-    Check, 
-    Filter, 
-    Plus, 
-    AlertCircle, 
-    Download, 
-    ExternalLink, 
-    LayoutDashboard, 
-    Bell, 
-    TrendingUp, 
-    HelpCircle, 
-    BarChart3, 
-    PieChart, 
-    ShieldCheck, 
-    Award, 
-    Gavel, 
-    Calendar, 
-    RefreshCw, 
+import {
+    ArrowLeft,
+    Save,
+    X,
+    ChevronLeft,
+    UsersRound,
+    Link as LinkIcon,
+    Loader2,
+    Upload,
+    FileText,
+    CheckCircle2,
+    Clock,
+    Trophy,
+    Share2,
+    Copy,
+    Check,
+    Filter,
+    Plus,
+    AlertCircle,
+    Download,
+    ExternalLink,
+    LayoutDashboard,
+    Bell,
+    TrendingUp,
+    HelpCircle,
+    BarChart3,
+    PieChart,
+    ShieldCheck,
+    Award,
+    Gavel,
+    Calendar,
+    RefreshCw,
     Eye, EyeOff,
-    XCircle, 
-    Users, 
-    Layers, 
-    Info, 
-    MapPin, 
-    ChevronRight, 
-    Settings2, 
-    Send, 
-    Timer, 
-    Search, 
-    Mail, 
-    Settings, 
-    Edit3, 
-    Building2, 
-    Square, 
-    CheckSquare, 
+    XCircle,
+    Users,
+    Layers,
+    Info,
+    MapPin,
+    ChevronRight,
+    Settings2,
+    Send,
+    Timer,
+    Search,
+    Mail,
+    Settings,
+    Edit3,
+    Building2,
+    Square,
+    CheckSquare,
     UserPlus,
     FileCheck,
     Trash2,
@@ -77,18 +77,6 @@ import HackathonEventPackage from './components/HackathonEventPackage';
 import { IEvent, IParticipant, ITeam, IStage, ISubmission } from '../../types/event';
 import { useAuth } from '../../AuthContext';
 import { sanitizePresentationHtml } from '../../utils/text';
-import FilePreviewPanel from '../../components/FilePreviewPanel';
-import {
-    buildPreviewFilename,
-    cacheSubmissionFile,
-    fetchSubmissionFileBlob,
-    getCachedSubmissionFile,
-    getFileTypeBadge,
-    mimeToExtension,
-    parseContentDispositionFilename,
-    resolveAssignedJudgeId,
-} from '../../utils/submissionFilePreview';
-import { invalidateEventDetailsCache, readEventDetailsCache, writeEventDetailsCache } from '../../utils/eventDetailsCache';
 
 interface EventDetailsProps {
     eventId: string | null;
@@ -98,13 +86,12 @@ interface EventDetailsProps {
     onEditEvent?: (eventId: string) => void;
 }
 
-const BUNDLE_TABS = ['shortlisted', 'approved', 'waitlisted', 'pending', 'rejected'] as const;
+const BUNDLE_TABS = ['shortlisted', 'waitlisted', 'rejected', 'pending'] as const;
 const BUNDLE_TAB_LABEL: Record<string, string> = {
     shortlisted: 'Shortlisted',
     waitlisted: 'Waitlisted',
-    approved: 'Approved',
-    pending: 'Pending',
     rejected: 'Rejected',
+    pending: 'Pending',
 };
 
 const getBundleSourceLabel = (item: any) => {
@@ -118,6 +105,7 @@ const getBundleStatusLabel = (status: string) => {
     const normalized = String(status || '').toLowerCase();
     if (normalized === 'accepted') return 'Approved';
     if (normalized === 'shortlisted') return 'Shortlisted';
+    if (normalized === 'waitlisted') return 'Waitlisted';
     if (normalized === 'rejected') return 'Rejected';
     if (normalized === 'pending review' || normalized === 'under review') return 'Pending Review';
     if (normalized === 'evaluated') return 'Evaluated';
@@ -139,7 +127,6 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     const [bannerError, setBannerError] = useState(false);
     const prevLogoUrl = useRef<string | undefined>(undefined);
     const prevBannerUrl = useRef<string | undefined>(undefined);
-    const dashboardInflightRef = useRef<Promise<any> | null>(null);
     useEffect(() => {
         if (event?.logo_url && event.logo_url !== prevLogoUrl.current) {
             prevLogoUrl.current = event.logo_url;
@@ -158,34 +145,41 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     const [criteria, setCriteria] = useState<any[]>([]);
     const [bundleData, setBundleData] = useState<any>(null);
     const [prizeDistribution, setPrizeDistribution] = useState<any[]>([]);
-    const [threshold, setThreshold] = useState<number | null>(null);
-    const [waitlistThreshold, setWaitlistThreshold] = useState<number | null>(null);
-    const [rejectThreshold, setRejectThreshold] = useState<number | null>(null);
-    const [debouncedThreshold, setDebouncedThreshold] = useState<number | null>(null);
-    const [debouncedWaitlist, setDebouncedWaitlist] = useState<number | null>(null);
-    const [debouncedReject, setDebouncedReject] = useState<number | null>(null);
-    const [thresholdsDirty, setThresholdsDirty] = useState(false);
-    const thresholdsHydratedRef = useRef(false);
+    const [shortlistThreshold, setShortlistThreshold] = useState<number>(80);
+    const [waitlistThreshold, setWaitlistThreshold] = useState<number>(65);
+    const [rejectThreshold, setRejectThreshold] = useState<number>(50);
+    const [savingThresholds, setSavingThresholds] = useState<boolean>(false);
     const [bundleTab, setBundleTab] = useState<string>('shortlisted');
-    const [bundleNotifyFilter, setBundleNotifyFilter] = useState<'ALL' | 'APPROVED_UNNOTIFIED' | 'APPROVED_NOTIFIED'>('ALL');
-    const [selectedSubmissionStageId, setSelectedSubmissionStageId] = useState('');
-    const [textPreview, setTextPreview] = useState<{ title: string; content: string } | null>(null);
     const [teams, setTeams] = useState<ITeam[]>([]);
     const [selectedTeam, setSelectedTeam] = useState<any | null>(null);
+    const [loadingTeamDetails, setLoadingTeamDetails] = useState(false);
     const [submissions, setSubmissions] = useState<ISubmission[]>([]);
     const [searchQuery, setSearchQuery] = useState('');
-    const [teamStatusFilter, setTeamStatusFilter] = useState('All');
-    const [notifyingTeams, setNotifyingTeams] = useState(false);
+
+    useEffect(() => {
+        if (event?.evaluation_thresholds) {
+            setShortlistThreshold(Number(event.evaluation_thresholds.shortlist_min ?? 80));
+            setWaitlistThreshold(Number(event.evaluation_thresholds.waitlist_min ?? 65));
+            setRejectThreshold(Number(event.evaluation_thresholds.reject_below ?? 50));
+        }
+    }, [event]);
 
     useEffect(() => {
         if (initialSection) setActiveTab(initialSection);
     }, [initialSection, eventId]);
+
+    useEffect(() => {
+        setSelectedBundleItems([]);
+        setSelectedBundleForEmail([]);
+    }, [bundleTab]);
     const [showSaveSuccess, setShowSaveSuccess] = useState(false);
     const [quizzes, setQuizzes] = useState<any[]>([]);
     const [isQuizModalOpen, setIsQuizModalOpen] = useState(false);
-    const [previewAsset, setPreviewAsset] = useState<{ url: string; filename: string; type: string; loading?: boolean; mime?: string } | null>(null);
+    const [previewAsset, setPreviewAsset] = useState<{ url: string; filename: string; type: string } | null>(null);
+    const [previewRecommendation, setPreviewRecommendation] = useState<{ title: string; text: string } | null>(null);
     const [isCreatingQuiz, setIsCreatingQuiz] = useState(false);
     const [quizStageId, setQuizStageId] = useState<string | null>(null);
+    const [notifyFilter, setNotifyFilter] = useState<string>('all');
     const [reviewQuiz, setReviewQuiz] = useState<{ quizId: string; quizTitle: string; stageName: string } | null>(null);
     const [codingAttempts, setCodingAttempts] = useState<Record<string, any[]>>({});
     const [editDescription, setEditDescription] = useState(false);
@@ -194,6 +188,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     const [stageSubmissions, setStageSubmissions] = useState<ISubmission[]>([]);
     const [submissionSubTab, setSubmissionSubTab] = useState<'projects' | 'assets' | 'assessments'>('projects');
     const [selectedSubTabQuizStageId, setSelectedSubTabQuizStageId] = useState<string>('');
+    const [selectedProjectStageId, setSelectedProjectStageId] = useState<string>('');
     const [quizResults, setQuizResults] = useState<any[]>([]);
     const [quizResultsLoading, setQuizResultsLoading] = useState(false);
     const [quizResultsError, setQuizResultsError] = useState('');
@@ -208,7 +203,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     const [isJudgeInviteOpen, setIsJudgeInviteOpen] = useState(false);
     const [isInvitingJudge, setIsInvitingJudge] = useState(false);
     const [selectedSubmissions, setSelectedSubmissions] = useState<string[]>([]);
-    const [bulkAssignJudgeId, setBulkAssignJudgeId] = useState('');
+    const [isBulkMode, setIsBulkMode] = useState(false);
     const [refreshCounter, setRefreshCounter] = useState(0);
     const [faqSearch, setFaqSearch] = useState('');
     const [showFaqBulkImport, setShowFaqBulkImport] = useState(false);
@@ -222,9 +217,9 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     const [institutionJudges, setInstitutionJudges] = useState<any[]>([]);
     const [isBulkNotifyModalOpen, setIsBulkNotifyModalOpen] = useState(false);
     const [selectedRegistrations, setSelectedRegistrations] = useState<string[]>([]);
-    
+
     const toggleRegistrationSelection = (id: string) => {
-        setSelectedRegistrations(prev => 
+        setSelectedRegistrations(prev =>
             prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
         );
     };
@@ -251,8 +246,10 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     const [regActionBusy, setRegActionBusy] = useState<string | null>(null);
     const [expandedRegId, setExpandedRegId] = useState<string | null>(null);
     const [notifyingApproved, setNotifyingApproved] = useState(false);
+    const [submittingStatus, setSubmittingStatus] = useState<string | null>(null);
+    const [notifiedItems, setNotifiedItems] = useState<Set<string>>(new Set());
     const [issuingCertificates, setIssuingCertificates] = useState(false);
-    
+
     // Server-driven registration form & eligibility (propagate profile_type prefill/lock)
     const [registrationFormDef, setRegistrationFormDef] = useState<any | null>(null);
     const [registrationUiFields, setRegistrationUiFields] = useState<any[]>([]);
@@ -263,7 +260,9 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     const [profileTypeLockedForPrefill, setProfileTypeLockedForPrefill] = useState(false);
 
     const fetchRegistrations = async () => {
+        console.log('fetchRegistrations called. eventId:', eventId, 'activeTab:', activeTab);
         if (!eventId || activeTab !== 'registrations') {
+            console.log('fetchRegistrations skipped: eventId missing or activeTab is not registrations');
             return;
         }
         setRegLoading(true);
@@ -288,7 +287,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                 setRegTotalPages(1);
             }
         } catch (err) {
-            try { console.error('Failed to fetch registrations:', err instanceof Error ? err.message : String(err)); } catch (_) {}
+            try { console.error('Failed to fetch registrations:', err instanceof Error ? err.message : String(err)); } catch (_) { }
         } finally {
             setRegLoading(false);
         }
@@ -323,18 +322,16 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     }, [eventId]);
 
     useEffect(() => {
-        if (activeTab === 'teams' || activeTab === 'registrations') {
-            fetchTeams();
-        }
-    }, [fetchTeams, refreshCounter, activeTab]);
+        fetchTeams();
+    }, [fetchTeams, refreshCounter]);
 
     const handleUpdateTeamStatus = async (teamId: string, newStatus: string) => {
         if (!eventId) return;
-        
+
         // Optimistic UI update
         const previousTeams = [...teams];
         setTeams(prevTeams => prevTeams.map(t => (t._id === teamId || t.team_id === teamId) ? { ...t, status: newStatus } : t));
-        
+
         setRegActionBusy(teamId);
         try {
             const res = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/teams/${teamId}/status`, {
@@ -357,7 +354,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
         } catch (err) {
             // Rollback on failure
             setTeams(previousTeams);
-            try { console.error('Error updating team status:', err instanceof Error ? err.message : String(err)); } catch (_) {}
+            try { console.error('Error updating team status:', err instanceof Error ? err.message : String(err)); } catch (_) { }
             alert('Network error while updating team status.');
         } finally {
             setRegActionBusy(null);
@@ -387,7 +384,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                 alert(`Failed to update status: ${err.detail || 'Unknown error'}`);
             }
         } catch (err) {
-            try { console.error('Error updating registration status:', err instanceof Error ? err.message : String(err)); } catch (_) {}
+            try { console.error('Error updating registration status:', err instanceof Error ? err.message : String(err)); } catch (_) { }
             alert('Network error while updating registration status.');
         } finally {
             setRegActionBusy(null);
@@ -411,7 +408,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                 alert(`Failed: ${err.detail || 'Unknown error'}`);
             }
         } catch (err) {
-            try { console.error('Error marking registration notified:', err instanceof Error ? err.message : String(err)); } catch (_) {}
+            try { console.error('Error marking registration notified:', err instanceof Error ? err.message : String(err)); } catch (_) { }
             alert('Network error.');
         } finally {
             setRegActionBusy(null);
@@ -420,9 +417,9 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
 
     const handleNotifyApproved = async (registrationIds?: string[]) => {
         if (!eventId) return;
-        
+
         const count = registrationIds ? registrationIds.length : ((regStats as any).pending_notification ?? regStats.approved);
-        
+
         if (count === 0) {
             alert('No participants selected to notify.');
             return;
@@ -433,9 +430,9 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
         try {
             const res = await fetch(`${API_BASE_URL}/api/v1/registration/events/${eventId}/notify-approved`, {
                 method: 'POST',
-                headers: { 
+                headers: {
                     'Content-Type': 'application/json',
-                    ...authHeaders() 
+                    ...authHeaders()
                 },
                 body: JSON.stringify({ registration_ids: registrationIds || null })
             });
@@ -457,94 +454,54 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     const handleIssueCertificates = async () => {
         if (!eventId || !event) return;
 
-        const templateId = event?.certificate_template_id || event?.template_id || '';
-        const shortlisted = Array.isArray(bundleData?.shortlisted) ? bundleData.shortlisted : [];
-        const approved = Array.isArray(bundleData?.approved) ? bundleData.approved : [];
-        const rankedPool = [...shortlisted, ...approved];
+        const shortlistedRows = Array.isArray(bundleData?.shortlisted) ? bundleData.shortlisted : [];
+        const approvedRows = Array.isArray(bundleData?.approved) ? bundleData.approved : [];
+        const combinedRows = [...shortlistedRows, ...approvedRows];
+        const userIds = Array.from(new Set(
+            combinedRows.flatMap((item: any) => {
+                if (Array.isArray(item?.member_user_ids) && item.member_user_ids.length > 0) {
+                    return item.member_user_ids;
+                }
+                if (item?.user_id) {
+                    return [item.user_id];
+                }
+                return [];
+            }).map((value: any) => String(value).trim()).filter(Boolean)
+        ));
 
-        if (rankedPool.length === 0) {
-            alert('No shortlisted or approved candidates found for winner/runner-up certificates.');
+        if (userIds.length === 0) {
+            alert('No qualified recipients were resolved for certificate issuance.');
             return;
         }
 
-        if (!confirm(
-            `Issue winner & runner-up certificates to top ranked candidates, then participation certificates to remaining registrants?\n\nTemplate: ${templateId || 'default'}`
-        )) return;
+        if (!confirm(`Issue certificates to ${userIds.length} recipient${userIds.length === 1 ? '' : 's'}?`)) return;
 
         setIssuingCertificates(true);
         try {
-            const rankedRes = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/certificates/issue-ranked`, {
+            const res = await fetch(`${API_BASE_URL}/api/admin/events/${eventId}/certificates/issue`, {
                 method: 'POST',
-                headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+                headers: {
+                    ...authHeaders(),
+                    'Content-Type': 'application/json',
+                    'X-Admin-Email': user?.email || ''
+                },
                 body: JSON.stringify({
-                    template_id: templateId,
-                    top_n: 3,
-                    min_score: bundleData?.thresholds?.shortlist_min || threshold,
-                    stage_id: getCurrentStageInfo().stage_id || selectedSubmissionStageId,
-                    send_email: true,
-                }),
+                    user_ids: userIds,
+                    template_id: event?.certificate_template_id || event?.template_id || ''
+                })
             });
-            const rankedData = await rankedRes.json().catch(() => ({}));
-            if (!rankedRes.ok) {
-                throw new Error(rankedData?.detail || rankedData?.error || 'Failed to issue ranked certificates');
+
+            const data = await res.json();
+            if (!res.ok) {
+                throw new Error(data?.detail || data?.error || 'Failed to issue certificates');
             }
 
-            const partRes = await fetch(`${API_BASE_URL}/api/v1/events/${eventId}/certificates/generate`, {
-                method: 'POST',
-                headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    template_id: templateId,
-                    achievement_type: 'participation',
-                    send_email: true,
-                    exclude_ranked: true,
-                }),
-            });
-            const partData = await partRes.json().catch(() => ({}));
-            if (!partRes.ok) {
-                throw new Error(partData?.detail || partData?.error || 'Failed to queue participation certificates');
-            }
-
-            const rankedCount = rankedData?.issued ?? rankedData?.count ?? 0;
-            const partQueued = partData?.queued ?? partData?.job_id ? 'queued' : 0;
-            alert(`Ranked certificates issued: ${rankedCount}. Participation batch: ${partQueued || 'started'}. Emails use your selected template.`);
+            const issuedCount = data?.issued ?? 0;
+            alert(`Issued ${issuedCount} certificate${issuedCount === 1 ? '' : 's'} to ${userIds.length} recipient${userIds.length === 1 ? '' : 's'}.`);
         } catch (error: any) {
             alert(error?.message || 'Failed to issue certificates');
         } finally {
             setIssuingCertificates(false);
-        }
-    };
-
-    const openStageSubmissionFile = async (submissionId: string, fieldId: string, filenameHint?: string) => {
-        if (!eventId) return;
-        const cacheKey = `${eventId}:${submissionId}:${fieldId}`;
-        const cached = getCachedSubmissionFile(cacheKey);
-        if (cached) {
-            setPreviewAsset({ url: cached.url, filename: cached.filename, type: 'file', mime: cached.mime });
-            return;
-        }
-        const placeholderName = filenameHint || fieldId || 'Opening file…';
-        setPreviewAsset({ url: '', filename: placeholderName, type: 'file', loading: true });
-        try {
-            const res = await fetch(
-                `${API_BASE_URL}/api/v1/institution/events/${eventId}/stage-submissions/${submissionId}/file/${encodeURIComponent(fieldId)}`,
-                { headers: { ...authHeaders() }, cache: 'no-store' },
-            );
-            if (!res.ok) {
-                setPreviewAsset(null);
-                alert('Could not open file. It may have been removed or you may not have access.');
-                return;
-            }
-            const blob = await res.blob();
-            const mime = blob.type || 'application/octet-stream';
-            const ext = mimeToExtension(mime);
-            const fallbackName = filenameHint?.includes('.') ? filenameHint : buildPreviewFilename(filenameHint || fieldId, mime, filenameHint);
-            const filename = parseContentDispositionFilename(res.headers.get('Content-Disposition'), fallbackName || `Attachment.${ext}`);
-            const url = window.URL.createObjectURL(blob);
-            cacheSubmissionFile(cacheKey, { url, filename, mime });
-            setPreviewAsset({ url, filename, type: 'file', mime });
-        } catch {
-            setPreviewAsset(null);
-            alert('Network error while opening file.');
         }
     };
 
@@ -568,7 +525,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                 alert('Failed to export CSV. Please try again.');
             }
         } catch (err) {
-            try { console.error('Export CSV error:', err instanceof Error ? err.message : String(err)); } catch (_) {}
+            try { console.error('Export CSV error:', err instanceof Error ? err.message : String(err)); } catch (_) { }
             alert('Network error during export.');
         }
     };
@@ -658,7 +615,10 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     const [evaluatingSubmission, setEvaluatingSubmission] = useState<any>(null);
     const [evaluationScores, setEvaluationScores] = useState<Record<string, number>>({});
     const [evaluationComment, setEvaluationComment] = useState('');
-    
+    const [selectedBundleItems, setSelectedBundleItems] = useState<string[]>([]);
+    const [selectedBundleForEmail, setSelectedBundleForEmail] = useState<any[]>([]);
+    const [bundleLoading, setBundleLoading] = useState(false);
+
     // Track unsaved changes to lifecycle or criteria
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
@@ -668,11 +628,11 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
         const criteriaChanged = JSON.stringify(criteria) !== JSON.stringify(event.judging_criteria);
         setHasUnsavedChanges(stagesChanged || criteriaChanged);
     }, [stages, criteria, event]);
-    
+
     // Auto-save logic
     useEffect(() => {
         if (!hasUnsavedChanges || saving) return;
-        
+
         const autoSaveTimer = setTimeout(() => {
             console.log('AUTO-SAVE: Triggering synchronization...');
             handleSaveEvent();
@@ -682,53 +642,23 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     }, [hasUnsavedChanges, stages, criteria]);
 
     useEffect(() => {
-        if (!eventId || activeTab !== 'submissions' || submissions.length > 0) return;
-        let cancelled = false;
-        (async () => {
-            try {
-                const res = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/submissions`, {
-                    headers: { ...authHeaders() },
-                });
-                if (!res.ok || cancelled) return;
-                const allSubs = await res.json();
-                if (!Array.isArray(allSubs) || cancelled) return;
-                const stageSubs = allSubs.filter((s: any) => s.source === 'stage_deliverable').map((ss: any) => ({
-                    ...ss,
-                    _sourceType: 'stage',
-                    source: 'stage_deliverable',
-                    teamName: ss.team_name || ss.data?.team_display_name || '',
-                    team_name: ss.team_name || ss.data?.team_display_name || '',
-                    user_name: ss.data?.name || ss.data?.full_name || '',
-                    submitted_at: ss.submitted_at || ss.last_updated_at,
-                }));
-                const legacySubs = allSubs.filter((s: any) => s.source !== 'stage_deliverable');
-                if (stageSubs.length > 0 || legacySubs.length > 0) {
-                    setSubmissions([...legacySubs, ...stageSubs]);
+        if (eventId) {
+            const fetchHackathonSubs = async () => {
+                try {
+                    const res = await fetch(`${API_BASE_URL}/api/hackathons/events/${eventId}/submissions`, {
+                        headers: { ...authHeaders() }
+                    });
+                    if (res.ok) {
+                        const data = await res.json();
+                        setHackathonSubmissions(Array.isArray(data) ? data : []);
+                    }
+                } catch (err) {
+                    // Not all events have hackathon submissions — that's fine
                 }
-            } catch {
-                // non-fatal
-            }
-        })();
-        return () => { cancelled = true; };
-    }, [eventId, activeTab, submissions.length, refreshCounter]);
-
-    useEffect(() => {
-        if (!eventId || activeTab !== 'submissions') return;
-        const fetchHackathonSubs = async () => {
-            try {
-                const res = await fetch(`${API_BASE_URL}/api/hackathons/events/${eventId}/submissions`, {
-                    headers: { ...authHeaders() }
-                });
-                if (res.ok) {
-                    const data = await res.json();
-                    setHackathonSubmissions(Array.isArray(data) ? data : []);
-                }
-            } catch {
-                // Not all events have hackathon submissions
-            }
-        };
-        fetchHackathonSubs();
-    }, [eventId, refreshCounter, activeTab]);
+            };
+            fetchHackathonSubs();
+        }
+    }, [eventId, refreshCounter]);
     const portalRegistrationStatusLabel = (raw: string | undefined) => {
         const s = (raw || 'pending').toLowerCase();
         if (s === 'accepted' || s === 'shortlisted') return 'SHORTLISTED';
@@ -736,124 +666,89 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
         return s.replace(/_/g, ' ').toUpperCase();
     };
 
-    const applyEvaluationThresholds = useCallback((eth: any) => {
-        const shortlist = typeof eth?.shortlist_min === 'number' ? eth.shortlist_min : 80;
-        const waitlist = typeof eth?.waitlist_min === 'number' ? eth.waitlist_min : Math.max(shortlist - 15, Math.round(shortlist * 0.75));
-        const reject = typeof eth?.reject_below === 'number' ? eth.reject_below : waitlist;
-        setThreshold(shortlist);
-        setWaitlistThreshold(waitlist);
-        setRejectThreshold(reject);
-        setDebouncedThreshold(shortlist);
-        setDebouncedWaitlist(waitlist);
-        setDebouncedReject(reject);
-        setThresholdsDirty(false);
-        thresholdsHydratedRef.current = true;
-    }, []);
-
     useEffect(() => {
         const fetchData = async () => {
             if (!eventId) return;
-
-            const cached = readEventDetailsCache(eventId);
-            if (cached) {
-                setEvent(cached.event);
-                setStages(cached.stages);
-                setCriteria(cached.criteria);
-                setParticipants(cached.participants);
-                setQuizzes(cached.quizzes);
-                setSubmissions(cached.submissions);
-                if (cached.teams?.length) setTeams(cached.teams);
-                applyEvaluationThresholds(cached.event?.evaluation_thresholds || {});
-                setLoading(false);
-            } else {
-                setLoading(true);
-            }
+            setLoading(true);
 
             try {
                 // Step 1: Fetch basic event details to get the institution ID
                 const eventRes = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/details`, { headers: { ...authHeaders() } });
                 if (!eventRes.ok) throw new Error("Failed to fetch event details");
-                
+
                 const eventData = await eventRes.json();
                 setEvent(eventData);
                 setStages(Array.isArray(eventData.stages) ? eventData.stages : []);
                 setCriteria(eventData.judging_criteria || []);
-                applyEvaluationThresholds(eventData.evaluation_thresholds || {});
                 const instId = eventData.institution_id;
 
-                const loadDashboardData = async () => {
-                    if (dashboardInflightRef.current) {
-                        return dashboardInflightRef.current;
-                    }
-                    const task = (async () => {
-                        const primary = await fetch(
-                            `${API_BASE_URL}/api/v1/events/${eventId}/dashboard-data?limit=200`,
-                            { headers: { ...authHeaders() } },
-                        );
-                        if (primary.ok) {
-                            return primary.json();
-                        }
-                        const [subsRes, teamsRes] = await Promise.all([
-                            fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/submissions`, { headers: { ...authHeaders() } }),
-                            fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/teams`, { headers: { ...authHeaders() } }),
-                        ]);
-                        const allSubs = subsRes.ok ? await subsRes.json() : [];
-                        const teamsData = teamsRes.ok ? await teamsRes.json() : [];
-                        const subsList = Array.isArray(allSubs) ? allSubs : [];
-                        const stageSubs = subsList.filter((s: any) => s.source === 'stage_deliverable');
-                        const legacySubs = subsList.filter((s: any) => s.source !== 'stage_deliverable');
-                        return {
-                            participants: [],
-                            quizzes: [],
-                            teams: Array.isArray(teamsData) ? teamsData : [],
-                            submissions: legacySubs,
-                            stage_submissions: stageSubs,
-                        };
-                    })();
-                    dashboardInflightRef.current = task;
-                    try {
-                        return await task;
-                    } finally {
-                        dashboardInflightRef.current = null;
-                    }
-                };
-
-                const dashboardData = await loadDashboardData().catch((err) => {
-                    console.error('Critical: Failed to load dashboard data.', err);
-                    return null;
-                });
+                // Step 2: Fetch dashboard data and institution profile in parallel
+                const [dashboardData, instData] = await Promise.all([
+                    fetch(`${API_BASE_URL}/api/v1/events/${eventId}/dashboard-data`, { headers: { ...authHeaders() } })
+                        .then(res => {
+                            if (!res.ok) throw new Error(`Dashboard data fetch failed with status ${res.status}`);
+                            return res.json();
+                        })
+                        .catch(err => {
+                            console.error("Critical: Failed to load dashboard data.", err);
+                            return null; // Ensure Promise.all doesn't fail completely
+                        }),
+                    instId
+                        ? fetch(`${API_BASE_URL}/api/v1/institution/profile/${instId}`, { headers: { ...authHeaders() } }).then(res => res.json()).catch(() => null)
+                        : Promise.resolve(null)
+                ]);
 
                 // Step 3: Set state with the fetched data, with proper validation
                 if (dashboardData) {
-                    const nextParticipants = Array.isArray(dashboardData.participants) ? dashboardData.participants : [];
-                    const nextQuizzes = Array.isArray(dashboardData.quizzes) ? dashboardData.quizzes : [];
+                    setParticipants(Array.isArray(dashboardData.participants) ? dashboardData.participants : []);
+                    setQuizzes(Array.isArray(dashboardData.quizzes) ? dashboardData.quizzes : []);
+
                     const legacySubmissions = Array.isArray(dashboardData.submissions) ? dashboardData.submissions : [];
-                    const stageSubmissions = Array.isArray(dashboardData.stage_submissions) ? dashboardData.stage_submissions.map((ss: any) => ({
-                        ...ss,
-                        _sourceType: 'stage',
-                        source: 'stage_deliverable',
-                        teamName: ss.team_name || ss.data?.team_display_name || '',
-                        team_name: ss.team_name || ss.data?.team_display_name || '',
-                        user_name: ss.data?.name || ss.data?.full_name || '',
-                        submitted_at: ss.submitted_at || ss.last_updated_at,
-                    })) : [];
-                    const nextSubmissions = [...legacySubmissions, ...stageSubmissions];
-                    const nextTeams = Array.isArray(dashboardData.teams) ? dashboardData.teams : [];
-
-                    setParticipants(nextParticipants);
-                    setQuizzes(nextQuizzes);
-                    setSubmissions(nextSubmissions);
-                    if (nextTeams.length > 0) setTeams(nextTeams);
-
-                    writeEventDetailsCache(eventId, {
-                        event: eventData,
-                        participants: nextParticipants,
-                        stages: Array.isArray(eventData.stages) ? eventData.stages : [],
-                        criteria: eventData.judging_criteria || [],
-                        submissions: nextSubmissions,
-                        teams: nextTeams,
-                        quizzes: nextQuizzes,
+                    const dashboardTeams = Array.isArray(dashboardData.teams) ? dashboardData.teams : [];
+                    const dashboardTeamLookup = new Map<string, any>();
+                    dashboardTeams.forEach((t: any) => {
+                        if (t._id) dashboardTeamLookup.set(String(t._id), t);
+                        if (t.team_id) dashboardTeamLookup.set(String(t.team_id), t);
                     });
+                    const resolveDashboardTeamMeta = (teamId: string | undefined, data: Record<string, any> = {}) => {
+                        const teamDoc = teamId ? dashboardTeamLookup.get(String(teamId)) : null;
+                        const leader = teamDoc?.members?.find(
+                            (m: any) => m.is_leader || String(m.user_id) === String(teamDoc?.team_leader_id)
+                        );
+                        return {
+                            teamName:
+                                data?.team_name ||
+                                data?.team_display_name ||
+                                data?.name ||
+                                teamDoc?.team_name ||
+                                teamDoc?.name ||
+                                '',
+                            teamLead: leader?.name || leader?.email || data?.lead_name || '',
+                        };
+                    };
+                    const stageSubmissions = Array.isArray(dashboardData.stage_submissions)
+                        ? dashboardData.stage_submissions.map((ss: any) => {
+                            const data = ss.data || {};
+                            const meta = resolveDashboardTeamMeta(ss.team_id, data);
+                            return {
+                                ...ss,
+                                _sourceType: 'stage',
+                                source: 'stage_deliverable',
+                                team_id: ss.team_id,
+                                teamName: ss.team_name || meta.teamName,
+                                teamLead: meta.teamLead,
+                                team_name: ss.team_name || meta.teamName,
+                                team_lead: meta.teamLead,
+                                user_name: data?.name || data?.full_name || '',
+                                submitted_at: ss.submitted_at || ss.last_updated_at,
+                            };
+                        })
+                        : [];
+                    setSubmissions([...legacySubmissions, ...stageSubmissions]);
+                }
+
+                if (instData) {
+                    setInstitution(instData);
                 }
 
             } catch (err) {
@@ -865,7 +760,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
         };
 
         fetchData();
-    }, [eventId, refreshCounter, applyEvaluationThresholds]);
+    }, [eventId, refreshCounter]);
 
     // Fetch server-driven registration form and eligibility when admin views registrations
     useEffect(() => {
@@ -873,22 +768,22 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
         let cancelled = false;
         (async () => {
 
-    const buildPrefillForRegistration = (reg: any) => {
-        const base = { ...(registrationPrefillMap || {}) };
-        // overlay registration's custom answers
-        if (reg && reg.custom_answers && typeof reg.custom_answers === 'object') {
-            for (const [k, v] of Object.entries(reg.custom_answers)) {
-                base[String(k)] = v;
-            }
-        }
-        // overlay registration profile snapshot values
-        if (reg && reg.profile_snapshot && typeof reg.profile_snapshot === 'object') {
-            const snap = reg.profile_snapshot;
-            if (snap.email) base['email'] = base['email'] ?? snap.email;
-            if (snap.full_name) base['full_name'] = base['full_name'] ?? snap.full_name;
-        }
-        return base;
-    };
+            const buildPrefillForRegistration = (reg: any) => {
+                const base = { ...(registrationPrefillMap || {}) };
+                // overlay registration's custom answers
+                if (reg && reg.custom_answers && typeof reg.custom_answers === 'object') {
+                    for (const [k, v] of Object.entries(reg.custom_answers)) {
+                        base[String(k)] = v;
+                    }
+                }
+                // overlay registration profile snapshot values
+                if (reg && reg.profile_snapshot && typeof reg.profile_snapshot === 'object') {
+                    const snap = reg.profile_snapshot;
+                    if (snap.email) base['email'] = base['email'] ?? snap.email;
+                    if (snap.full_name) base['full_name'] = base['full_name'] ?? snap.full_name;
+                }
+                return base;
+            };
             try {
                 // fetch form definition
                 const formRes = await fetch(`${API_BASE_URL}/api/v1/registration/events/${eventId}/form`, { headers: { ...authHeaders() } });
@@ -940,52 +835,43 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
         return () => { cancelled = true; };
     }, [eventId, activeTab, user]);
 
-    const saveEvaluationThresholds = async () => {
-        if (!eventId || threshold == null || waitlistThreshold == null || rejectThreshold == null) return;
-        const payload = {
-            criteria,
-            evaluation_thresholds: {
-                shortlist_min: threshold,
-                waitlist_min: waitlistThreshold,
-                reject_below: rejectThreshold,
-            },
-        };
-        const res = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/criteria`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', ...authHeaders() },
-            body: JSON.stringify(payload),
-        });
-            if (res.ok) {
-                setEvent((prev) => (prev ? { ...prev, evaluation_thresholds: payload.evaluation_thresholds } : prev));
-                applyEvaluationThresholds(payload.evaluation_thresholds);
-                if (eventId) invalidateEventDetailsCache(eventId);
-                setShowSaveSuccess(true);
-                setTimeout(() => setShowSaveSuccess(false), 2000);
-            } else {
-            const err = await res.json().catch(() => ({}));
-            alert(err?.detail || 'Failed to save thresholds');
-        }
-    };
-
-    const fetchBundle = async () => {
-        if (!eventId || activeTab !== 'submissions' || debouncedThreshold == null) return;
+    const fetchBundle = async (stageId?: string) => {
+        if (!eventId || activeTab !== 'submissions') return;
+        if (bundleLoading) return;
+        setBundleLoading(true);
         try {
-            const params = new URLSearchParams();
-            if (thresholdsDirty) {
-                params.set('threshold', String(debouncedThreshold));
-                if (debouncedWaitlist != null) params.set('waitlist_min', String(debouncedWaitlist));
-                if (debouncedReject != null) params.set('reject_below', String(debouncedReject));
-            }
-            if (selectedSubmissionStageId) params.set('stage_id', selectedSubmissionStageId);
-            const res = await fetch(
-                `${API_BASE_URL}/api/v1/institution/events/${eventId}/qualified-bundle?${params}`,
-                { headers: { ...authHeaders() } },
-            );
+            // New endpoint for stage-specific submissions and counts
+            const url = stageId 
+                ? `${API_BASE_URL}/api/submissions/admin/events/${eventId}/stage/${encodeURIComponent(stageId)}/submissions`
+                : `${API_BASE_URL}/api/v1/institution/events/${eventId}/qualified-bundle?threshold=${shortlistThreshold}&waitlist_min=${waitlistThreshold}&reject_below=${rejectThreshold}`;
+                
+            const res = await fetch(url, {
+                headers: { ...authHeaders() }
+            });
             if (res.ok) {
-                setBundleData(await res.json());
+                const data = await res.json();
+                if (stageId) {
+                    // Map new endpoint response structure to bundleData structure
+                    setBundleData({
+                        shortlisted: data.submissions.filter((s: any) => String(s.status).toLowerCase() === 'shortlisted'),
+                        waitlisted: data.submissions.filter((s: any) => String(s.status).toLowerCase() === 'waitlisted'),
+                        rejected: data.submissions.filter((s: any) => String(s.status).toLowerCase() === 'rejected'),
+                        pending: data.submissions.filter((s: any) => String(s.status).toLowerCase() === 'pending'),
+                        summary: {
+                            shortlisted: data.counts['Shortlisted'] || 0,
+                            waitlisted: data.counts['Waitlisted'] || 0,
+                            rejected: data.counts['Rejected'] || 0,
+                            pending: data.counts['Pending'] || 0,
+                        }
+                    });
+                } else {
+                    setBundleData(data);
+                }
             }
         } catch (e) {
             console.error('[BUNDLE] Failed to fetch evaluation bundle:', e);
+        } finally {
+            setBundleLoading(false);
         }
     };
 
@@ -1074,7 +960,12 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
         if (quizStages.length > 0 && !selectedSubTabQuizStageId) {
             setSelectedSubTabQuizStageId(quizStages[0].id);
         }
-    }, [stages, selectedSubTabQuizStageId]);
+
+        const projStages = stages.filter(s => s.type === 'SUBMISSION' || s.type === 'DELIVERABLE' || !s.type);
+        if (projStages.length > 0 && !selectedProjectStageId) {
+            setSelectedProjectStageId(projStages[0].id);
+        }
+    }, [stages, selectedSubTabQuizStageId, selectedProjectStageId]);
 
     useEffect(() => {
         if (activeTab === 'submissions' && submissionSubTab === 'assessments' && selectedSubTabQuizStageId) {
@@ -1086,41 +977,15 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     }, [activeTab, submissionSubTab, selectedSubTabQuizStageId, eventId, refreshCounter]);
 
     useEffect(() => {
-        if (threshold == null) return;
-        const timer = window.setTimeout(() => setDebouncedThreshold(threshold), 400);
-        return () => window.clearTimeout(timer);
-    }, [threshold]);
-
-    useEffect(() => {
-        if (waitlistThreshold == null) return;
-        const timer = window.setTimeout(() => setDebouncedWaitlist(waitlistThreshold), 400);
-        return () => window.clearTimeout(timer);
-    }, [waitlistThreshold]);
-
-    useEffect(() => {
-        if (rejectThreshold == null) return;
-        const timer = window.setTimeout(() => setDebouncedReject(rejectThreshold), 400);
-        return () => window.clearTimeout(timer);
-    }, [rejectThreshold]);
-
-    useEffect(() => {
-        const submissionStages = stages.filter((s) => {
-            const t = String(s.type || '').toUpperCase();
-            const n = String(s.name || '').toLowerCase();
-            return !['REGISTRATION', 'TEAM_FORMATION', 'QUIZ'].includes(t)
-                && !n.includes('registration')
-                && !n.includes('team formation');
-        });
-        if (submissionStages.length > 0 && !selectedSubmissionStageId) {
-            setSelectedSubmissionStageId(submissionStages[0].id);
+        if (eventId && activeTab === 'submissions') {
+            const stageId = submissionSubTab === 'projects'
+                ? (selectedProjectStageId || undefined)
+                : submissionSubTab === 'assessments'
+                    ? (selectedSubTabQuizStageId || undefined)
+                    : undefined;
+            fetchBundle(stageId);
         }
-    }, [stages, selectedSubmissionStageId]);
-
-    useEffect(() => {
-        if (eventId && activeTab === 'submissions' && thresholdsHydratedRef.current) {
-            fetchBundle();
-        }
-    }, [eventId, activeTab, debouncedThreshold, debouncedWaitlist, debouncedReject, selectedSubmissionStageId, refreshCounter, thresholdsDirty]);
+    }, [eventId, activeTab, refreshCounter, submissionSubTab, selectedProjectStageId, selectedSubTabQuizStageId]);
 
     useEffect(() => {
         if (activeTab !== 'assessments' || !eventId || quizzes.length === 0) return;
@@ -1146,6 +1011,63 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
             cancelled = true;
         };
     }, [activeTab, eventId, quizzes]);
+
+    const getCurrentBundleItems = () => {
+        if (!bundleData) return [];
+        if (bundleTab === 'shortlisted') {
+            const sList = Array.isArray(bundleData.shortlisted) ? bundleData.shortlisted : [];
+            const aList = Array.isArray(bundleData.approved) ? bundleData.approved : [];
+            const seen = new Set();
+            return [...sList, ...aList].filter(item => {
+                const id = item.team_id || item.user_id || item.submission_id;
+                if (!id) return true;
+                if (seen.has(id)) return false;
+                seen.add(id);
+                return true;
+            });
+        }
+        return Array.isArray(bundleData[bundleTab]) ? bundleData[bundleTab] : [];
+    };
+
+    const handleSaveThresholds = async () => {
+        if (!eventId) return;
+        setSavingThresholds(true);
+        try {
+            const payload = {
+                criteria: criteria,
+                evaluation_thresholds: {
+                    shortlist_min: shortlistThreshold,
+                    waitlist_min: waitlistThreshold,
+                    reject_below: rejectThreshold
+                }
+            };
+            const res = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/criteria`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                body: JSON.stringify(payload)
+            });
+            if (res.ok) {
+                setEvent(prev => prev ? {
+                    ...prev,
+                    evaluation_thresholds: {
+                        shortlist_min: shortlistThreshold,
+                        waitlist_min: waitlistThreshold,
+                        reject_below: rejectThreshold
+                    }
+                } : prev);
+                setShowSaveSuccess(true);
+                setTimeout(() => setShowSaveSuccess(false), 2000);
+                setRefreshCounter(prev => prev + 1);
+            } else {
+                const err = await res.json().catch(() => ({}));
+                alert(`Failed to save thresholds: ${err.detail || 'Unknown error'}`);
+            }
+        } catch (err) {
+            alert('Network error while saving thresholds');
+        } finally {
+            setSavingThresholds(false);
+        }
+    };
 
     const evaluateCodingAttempt = async (quizId: string, participantUserId: string) => {
         const scoreRaw = window.prompt('Manual score (%)');
@@ -1178,26 +1100,18 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     };
 
     const handleSaveRubrics = async () => {
-        if (!eventId || threshold == null || waitlistThreshold == null || rejectThreshold == null) return;
+        if (!eventId) return;
         setSaving(true);
         try {
             const res = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/criteria`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', ...authHeaders() },
-                body: JSON.stringify({
-                    criteria,
-                    evaluation_thresholds: {
-                        shortlist_min: threshold,
-                        waitlist_min: waitlistThreshold,
-                        reject_below: rejectThreshold,
-                    },
-                })
+                body: JSON.stringify(criteria)
             });
             if (res.ok) {
                 setEvent(prev => prev ? { ...prev, judging_criteria: criteria } : prev);
                 setHasUnsavedChanges(false);
                 setShowSaveSuccess(true);
-                if (eventId) invalidateEventDetailsCache(eventId);
             } else {
                 const err = await res.json().catch(() => ({}));
                 alert(`Failed to save rubrics: ${err.detail || 'Unknown error'}`);
@@ -1212,7 +1126,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     const handleSaveEvent = async () => {
         if (!eventId || !event) return;
         setSaving(true);
-        
+
         // Validate stage dates — only for stages whose dates actually changed
         const originalStages: IStage[] = Array.isArray(event?.stages) ? event.stages : [];
         const origStageMap = new Map(originalStages.map((s: any) => [s.id, s]));
@@ -1254,20 +1168,34 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
         }
 
         try {
-        // Strip large binary fields and read-only fields before sending to reduce payload
-        const { logo_url, banner_url, _id, created_at, updated_at, institution_id, participant_count, ...cleanEvent } = finalEvent;
+            // Strip large binary fields and read-only fields before sending to reduce payload
+            const { logo_url, banner_url, _id, created_at, updated_at, institution_id, participant_count, ...cleanEvent } = finalEvent;
 
-        const res = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json', ...authHeaders() },
-            body: JSON.stringify({ ...cleanEvent, stages, judging_criteria: criteria })
-        });
+            const res = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                body: JSON.stringify({ ...cleanEvent, stages, judging_criteria: criteria })
+            });
             if (res.ok) {
                 const updatedEvent = { ...finalEvent, stages, judging_criteria: criteria };
                 setEvent(updatedEvent);
                 setHasUnsavedChanges(false);
                 setShowSaveSuccess(true);
-                if (eventId) invalidateEventDetailsCache(eventId);
+
+                // Background sync - update all opportunities without blocking UI
+                console.log('DIRECT SYNC: Triggering background synchronization for event:', eventId);
+                fetch(`${API_BASE_URL}/api/direct-sync/force-update/${eventId}`, {
+                    method: 'POST',
+                    headers: { ...authHeaders() }
+                }).then(syncRes => {
+                    if (syncRes.ok) {
+                        console.log('DIRECT SYNC: Background sync successful');
+                    } else {
+                        console.error('DIRECT SYNC: Background sync failed');
+                    }
+                }).catch(syncErr => {
+                    console.error('DIRECT SYNC: Background network error:', syncErr);
+                });
             } else {
                 const errorData = await res.json().catch(() => ({}));
                 alert(`Failed to save event: ${errorData.detail || 'Unknown error'}`);
@@ -1317,7 +1245,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
             else setBannerError(false);
             setShowSaveSuccess(true);
         } catch (err) {
-            try { console.error('[MediaUpload] network error', err instanceof Error ? err.message : String(err)); } catch (_) {}
+            try { console.error('[MediaUpload] network error', err instanceof Error ? err.message : String(err)); } catch (_) { }
             alert('Network error during upload.');
         }
     };
@@ -1344,8 +1272,8 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
         setIsCreatingQuiz(true);
         try {
             const stage = stages.find((s) => s.id === quizStageId);
-            const bodyPayload: Record<string, any> = { 
-                ...quizData, 
+            const bodyPayload: Record<string, any> = {
+                ...quizData,
                 stage_id: quizStageId,
                 quiz_id: stage?.config?.quiz_id || undefined
             };
@@ -1384,7 +1312,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
             return;
         }
         const nextStageName = stageInfo.next_stage_name;
-        
+
         setBulkNotifyNextStage(nextStageName);
         setBulkNotifySubject(`Congratulations! You've been shortlisted for ${event?.title || ''}`);
         setBulkNotifyMessage(DEFAULT_SHORTLIST_MESSAGE.replace(/{next_stage}/g, nextStageName));
@@ -1399,21 +1327,21 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                 const tmplData = await tmplRes.json();
                 setBulkNotifyTemplates(tmplData.filter((t: any) => ['stage_advancement', 'announcement'].includes(t.type)));
             }
-        } catch (e) {}
+        } catch (e) { }
         setIsBulkNotifyModalOpen(true);
     };
 
     const confirmBulkDispatch = async () => {
-        const currentBundle = bundleData?.[bundleTab] || [];
-        const teamIds = currentBundle.map((item: any) => item.team_id);
-        
+        const selectedForEmail = selectedBundleForEmail.length > 0 ? selectedBundleForEmail : (bundleData?.[bundleTab] || []);
+        const teamIds = selectedForEmail.map((item: any) => item.team_id || item.submission_id);
+
         setNotifying(true);
         try {
             const res = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/bulk-notify`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', ...authHeaders() },
-                body: JSON.stringify({ 
-                    team_ids: teamIds, 
+                body: JSON.stringify({
+                    team_ids: teamIds,
                     next_stage: bulkNotifyNextStage,
                     custom_message: bulkNotifyMessage,
                     subject: bulkNotifySubject,
@@ -1429,7 +1357,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                 alert('Failed to dispatch notifications');
             }
         } catch (error) {
-            try { console.error('Dispatch failed:', error instanceof Error ? error.message : String(error)); } catch (_) {}
+            try { console.error('Dispatch failed:', error instanceof Error ? error.message : String(error)); } catch (_) { }
             alert('Network error during dispatch');
         } finally {
             setNotifying(false);
@@ -1536,9 +1464,6 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
     if (!event) return <div>Event not found</div>;
 
     const getStageStatus = (stage: any) => {
-        const explicit = String(stage?.status || '').trim().toLowerCase();
-        if (explicit) return explicit;
-
         const normalizeDate = (value: any, endOfDay = false) => {
             if (!value) return null;
             const raw = String(value).trim();
@@ -1558,66 +1483,77 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
             return parsed;
         };
 
+        // Dates are the source of truth — compute from them first
         const now = new Date();
         const start = normalizeDate(stage?.start_date || stage?.startDate, false);
         const end = normalizeDate(stage?.end_date || stage?.endDate, true);
         if (start && now < start) return 'upcoming';
         if (end && now > end) return 'completed';
+        if (start || end) return 'active';
+
+        // Only fall back to explicit status when no dates exist
+        const explicit = String(stage?.status || '').trim().toLowerCase();
+        if (explicit) return explicit;
         return 'active';
     };
 
-    const submissionStageList = stages.filter((s) => {
-        const t = String(s.type || '').toUpperCase();
-        const n = String(s.name || '').toLowerCase();
-        return !['REGISTRATION', 'TEAM_FORMATION', 'QUIZ'].includes(t)
-            && !n.includes('registration')
-            && !n.includes('team formation');
-    });
-
-    const isTerminalStageType = (stage: any) => {
-        const t = String(stage?.type || '').toUpperCase();
-        const n = String(stage?.name || '').toUpperCase();
-        const terminal = ['FINAL', 'FINALE', 'RESULTS', 'CERTIFICATION', 'AWARDS'];
-        return terminal.includes(t) || terminal.some((x) => n.includes(x));
-    };
-
     const getCurrentStageInfo = () => {
-        const sortedStages = [...submissionStageList].sort(
-            (a, b) => new Date(a.start_date || 0).getTime() - new Date(b.start_date || 0).getTime()
-        );
+        const sortedStages = [...stages].sort((a, b) => new Date(a.start_date).getTime() - new Date(b.start_date).getTime());
         const totalStages = sortedStages.length;
-        const selectedIdx = selectedSubmissionStageId
-            ? sortedStages.findIndex((s) => s.id === selectedSubmissionStageId)
-            : -1;
-        const selectedStageIndex = selectedIdx >= 0 ? selectedIdx : Math.max(0, totalStages - 1);
-        const stageNumber = selectedStageIndex + 1;
-        const currentStage = sortedStages[selectedStageIndex];
-        const stageName = currentStage?.name || '';
-        const isFinalStage = totalStages > 0 && (
-            isTerminalStageType(currentStage)
-            || selectedStageIndex === totalStages - 1
-        );
+
+        const activeStageIndex = sortedStages.findIndex((stage) => getStageStatus(stage) === 'active');
+        const selectedStageIndex = activeStageIndex !== -1
+            ? activeStageIndex
+            : Math.max(0, (sortedStages as any).findLastIndex ? (sortedStages as any).findLastIndex((stage: any) => getStageStatus(stage) !== 'upcoming') : (() => {
+                for (let i = sortedStages.length - 1; i >= 0; i--) {
+                    if (getStageStatus(sortedStages[i]) !== 'upcoming') return i;
+                }
+                return 0;
+            })());
+
+        const stageNumber = selectedStageIndex + 1; // 1-based
+        const stageName = sortedStages[selectedStageIndex]?.name || '';
+        const isFinalStage = stageNumber === totalStages && totalStages > 0;
+
+        // Get next stage name if available (for "advance to" messages)
         const nextStageIndex = selectedStageIndex + 1;
-        const nextStageName = nextStageIndex < totalStages ? sortedStages[nextStageIndex]?.name || '' : '';
+        const nextStageName = nextStageIndex < totalStages
+            ? sortedStages[nextStageIndex]?.name || ''
+            : "";
 
         return {
             stage_number: stageNumber,
             total_stages: totalStages,
             stage_name: stageName,
-            stage_id: currentStage?.id || selectedSubmissionStageId,
             next_stage_name: nextStageName,
-            is_final_stage: isFinalStage,
+            is_final_stage: isFinalStage
         };
     };
 
     const handleUpdateStatus = async (teamId: string, newStatus: string, item?: any) => {
+        const statusKey = `${teamId}_${newStatus}`;
+        if (submittingStatus === statusKey) return;
+        if (notifiedItems.has(statusKey)) {
+            alert(`Email already sent for this status. Change the status to send again.`);
+            return;
+        }
+        const current = (item?.status || '').toLowerCase();
+        const target = newStatus.toLowerCase();
+        if (
+            current === target ||
+            (['accepted', 'approved', 'shortlisted'].includes(current) && ['accepted', 'approved', 'shortlisted'].includes(target))
+        ) {
+            setBundleTab('shortlisted');
+            return;
+        }
+        setSubmittingStatus(statusKey);
         const instId = institutionIdProp || event?.institution_id;
         const sourceType = item?.source || item?._sourceType || '';
         const submissionId = item?.submission_id || teamId;
 
         if (teamId.startsWith('portal_app:')) {
             const appId = teamId.replace(/^portal_app:/, '');
-            if (!appId) return;
+            if (!appId) { setSubmittingStatus(null); return; }
             try {
                 const res = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/portal-applications/${appId}/status`, {
                     method: 'PATCH',
@@ -1627,15 +1563,16 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                 if (res.ok) {
                     setBundleData(prev => ({
                         ...prev,
-                        [bundleTab]: prev?.[bundleTab]?.map((item: any) => 
+                        [bundleTab]: prev?.[bundleTab]?.map((item: any) =>
                             item.team_id === teamId ? { ...item, status: newStatus } : item
                         )
                     }));
                     setShowSaveSuccess(true);
                     setTimeout(() => setShowSaveSuccess(false), 2000);
+                    setRefreshCounter(prev => prev + 1);
                 }
             } catch (err) {
-                try { console.error('Failed to update application status:', err instanceof Error ? err.message : String(err)); } catch (_) {}
+                try { console.error('Failed to update application status:', err instanceof Error ? err.message : String(err)); } catch (_) { }
             }
         } else if (sourceType === 'stage_deliverable') {
             try {
@@ -1647,39 +1584,19 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                 if (res.ok) {
                     setBundleData(prev => ({
                         ...prev,
-                        [bundleTab]: prev?.[bundleTab]?.map((row: any) => 
+                        [bundleTab]: prev?.[bundleTab]?.map((row: any) =>
                             row.submission_id === submissionId ? { ...row, status: newStatus } : row
                         )
                     }));
                     setShowSaveSuccess(true);
                     setTimeout(() => setShowSaveSuccess(false), 2000);
-                    if (item && ['Shortlisted', 'Accepted', 'Rejected'].includes(newStatus)) {
-                        try {
-                            const stageInfo = getCurrentStageInfo();
-                            await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/send-status-email`, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json', ...authHeaders() },
-                                body: JSON.stringify({
-                                    submission_id: submissionId,
-                                    team_id: item.team_id,
-                                    status: newStatus,
-                                    team_name: item.team_name,
-                                    emails: item.member_emails || [],
-                                    stage_context: stageInfo,
-                                }),
-                            });
-                            fetchBundle();
-                        } catch (emailErr) {
-                            try { console.error('Failed to send email:', emailErr instanceof Error ? emailErr.message : String(emailErr)); } catch (_) {}
-                        }
-                    }
+                    setRefreshCounter(prev => prev + 1);
                 }
             } catch (err) {
-                try { console.error('Failed to update stage submission status:', err instanceof Error ? err.message : String(err)); } catch (_) {}
+                try { console.error('Failed to update stage submission status:', err instanceof Error ? err.message : String(err)); } catch (_) { }
             }
-        } else if (item?.team_id || teamId) {
-            const resolvedTeamId = item?.team_id || teamId;
-            // Update team status in participants collection
+        } else if (item?.team_id) {
+            const resolvedTeamId = item.team_id;
             try {
                 const res = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/teams/${resolvedTeamId}/status`, {
                     method: 'PATCH',
@@ -1689,18 +1606,18 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                 if (res.ok) {
                     setBundleData(prev => ({
                         ...prev,
-                        [bundleTab]: prev?.[bundleTab]?.map((item: any) => 
-                            item.team_id === resolvedTeamId ? { ...item, status: newStatus } : item
+                        [bundleTab]: prev?.[bundleTab]?.map((i: any) =>
+                            i.team_id === resolvedTeamId ? { ...i, status: newStatus } : i
                         )
                     }));
                     setShowSaveSuccess(true);
                     setTimeout(() => setShowSaveSuccess(false), 2000);
-                    
-                    // Send email notification with stage context
+                    setRefreshCounter(prev => prev + 1);
+
                     if (item) {
                         try {
                             const stageInfo = getCurrentStageInfo();
-                            await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/send-status-email`, {
+                            const emailRes = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/send-status-email`, {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json', ...authHeaders() },
                                 body: JSON.stringify({
@@ -1711,13 +1628,18 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                     stage_context: stageInfo
                                 })
                             });
+                            if (emailRes.ok) {
+                                setNotifiedItems(prev => new Set(prev).add(`${resolvedTeamId}_${newStatus}`));
+                            }
                         } catch (emailErr) {
-                            try { console.error('Failed to send email:', emailErr instanceof Error ? emailErr.message : String(emailErr)); } catch (_) {}
+                            try { console.error('Failed to send email:', emailErr instanceof Error ? emailErr.message : String(emailErr)); } catch (_) { }
                         }
                     }
+                } else {
+                    try { console.error('Failed to update team status:', await res.text()); } catch (_) {}
                 }
             } catch (err) {
-                try { console.error('Failed to update team status:', err instanceof Error ? err.message : String(err)); } catch (_) {}
+                try { console.error('Failed to update team status:', err instanceof Error ? err.message : String(err)); } catch (_) { }
             }
         } else if (submissionId) {
             try {
@@ -1729,20 +1651,22 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                 if (res.ok) {
                     setBundleData(prev => ({
                         ...prev,
-                        [bundleTab]: prev?.[bundleTab]?.map((row: any) => 
+                        [bundleTab]: prev?.[bundleTab]?.map((row: any) =>
                             row.submission_id === submissionId ? { ...row, status: newStatus } : row
                         )
                     }));
                     setShowSaveSuccess(true);
                     setTimeout(() => setShowSaveSuccess(false), 2000);
+                    setRefreshCounter(prev => prev + 1);
                 }
             } catch (err) {
-                try { console.error('Failed to update submission status:', err instanceof Error ? err.message : String(err)); } catch (_) {}
+                try { console.error('Failed to update submission status:', err instanceof Error ? err.message : String(err)); } catch (_) { }
             }
         }
+        setSubmittingStatus(null);
     };
 
-    
+
     const handleCreateQuiz = async (quizData: any) => {
         await attachQuizToStage(quizData);
         try {
@@ -1754,27 +1678,40 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
         }
     };
 
-    const handleOpenJudgeAssignment = (submissionId: string) => {
-        if (!institutionJudges.length) {
-            alert('No judges available. Invite a judge first.');
-            return;
+    const handleOpenJudgeAssignment = async (submissionId: string) => {
+        // Fetch available judges
+        try {
+            console.log('DEBUG: Fetching judges for submission:', submissionId);
+            const res = await fetch(`${API_BASE_URL}/api/judges`, { headers: { ...authHeaders() } });
+            console.log('DEBUG: Judges API response status:', res.status);
+            if (res.ok) {
+                const judges = await res.json();
+                console.log('DEBUG: Judges data received:', judges);
+                setAvailableJudges(judges);
+                setJudgeAssignmentModal({ isOpen: true, submissionId });
+            } else {
+                console.log('DEBUG: Failed to fetch judges, status:', res.status);
+                const errorData = await res.json().catch(() => ({}));
+                console.log('DEBUG: Judges API error:', errorData);
+                alert(`Failed to load judges: ${errorData.detail || 'Unknown error'}`);
+            }
+        } catch (error) {
+            try { console.error('Failed to fetch judges:', error instanceof Error ? error.message : String(error)); } catch (_) { }
+            alert('Failed to load available judges');
         }
-        setAvailableJudges(institutionJudges);
-        setBulkAssignJudgeId('');
-        setJudgeAssignmentModal({ isOpen: true, submissionId });
     };
 
     const copyToClipboard = (text: string) => {
         navigator.clipboard.writeText(text).then(() => {
             alert('Link copied to clipboard!');
         }).catch(err => {
-            try { console.error('Failed to copy link: ', err instanceof Error ? err.message : String(err)); } catch (_) {}
+            try { console.error('Failed to copy link: ', err instanceof Error ? err.message : String(err)); } catch (_) { }
         });
     };
 
     const handleAssignJudge = async (judgeId: string, judgeEmail: string) => {
         const isBulk = selectedSubmissions.length > 0 && judgeAssignmentModal.submissionId === 'bulk';
-        
+
         try {
             const targetIds = isBulk ? selectedSubmissions : [String(judgeAssignmentModal.submissionId || '')].filter(Boolean);
             const hackathonIdSet = new Set((hackathonSubmissions || []).map((s: any) => String(s?._id || s?.id || s?.submissionId)));
@@ -1784,43 +1721,49 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
             // Legacy submissions use /api/judges/assign (submission_data_col pipeline)
             const res = isHackathonSubmission
                 ? await fetch(`${API_BASE_URL}/api/hackathons/submissions/assign-judge`, {
-                      method: 'PATCH',
-                      headers: { 'Content-Type': 'application/json', ...authHeaders() },
-                      body: JSON.stringify({ submission_ids: targetIds, judge_id: judgeId }),
-                  })
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                    body: JSON.stringify({ submission_ids: targetIds, judge_id: judgeId }),
+                })
                 : await fetch(`${API_BASE_URL}/api/judges/assign`, {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json', ...authHeaders() },
-                      body: JSON.stringify(
-                          isBulk
-                              ? { judge_id: judgeId, submission_ids: selectedSubmissions }
-                              : { judge_id: judgeId, submission_id: judgeAssignmentModal.submissionId }
-                      ),
-                  });
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                    body: JSON.stringify(
+                        isBulk
+                            ? { judge_id: judgeId, submission_ids: selectedSubmissions }
+                            : { judge_id: judgeId, submission_id: judgeAssignmentModal.submissionId }
+                    ),
+                });
 
             if (res.ok) {
                 const result = await res.json();
-                
+
                 let msg = isBulk ? `Successfully assigned judge to ${selectedSubmissions.length} projects!` : 'Judge assigned successfully!';
-                
+
                 // NEW: Handle email delivery feedback
                 if (result?.email_sent === false) {
                     msg += "\n\n⚠️ NOTE: Invitation email could not be sent. Please share the evaluation link manually.";
                 }
-                
+
                 alert(msg);
-                
+
                 setJudgeAssignmentModal({ isOpen: false, submissionId: null });
                 setSelectedSubmissions([]);
+                setIsBulkMode(false);
                 // Refresh submissions
                 setRefreshCounter(prev => prev + 1);
-                fetchBundle();
+                const currentStageId = submissionSubTab === 'projects'
+                    ? (selectedProjectStageId || undefined)
+                    : submissionSubTab === 'assessments'
+                        ? (selectedSubTabQuizStageId || undefined)
+                        : undefined;
+                fetchBundle(currentStageId);
             } else {
                 const error = await res.json();
                 alert(error.detail || 'Failed to assign judge');
             }
         } catch (error) {
-            try { console.error('Error assigning judge:', error instanceof Error ? error.message : String(error)); } catch (_) {}
+            try { console.error('Error assigning judge:', error instanceof Error ? error.message : String(error)); } catch (_) { }
             alert('Network error while assigning judge');
         }
     };
@@ -1834,43 +1777,32 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
             });
             setRefreshCounter(prev => prev + 1);
         } catch (e) {
-            try { console.error('Delete judge error:', e instanceof Error ? e.message : String(e)); } catch (_) {}
+            try { console.error('Delete judge error:', e instanceof Error ? e.message : String(e)); } catch (_) { }
         }
     };
 
     const handleInviteJudge = async (judgeData: any) => {
-        if (!eventId) return;
-        const email = String(judgeData.email || '').trim().toLowerCase();
-        if (!email) {
-            alert('Judge email is required to send invitations and evaluation links.');
-            return;
-        }
         setIsInvitingJudge(true);
         try {
-            const res = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/judges`, {
+            const res = await fetch(`${API_BASE_URL}/api/judges/`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', ...authHeaders() },
                 body: JSON.stringify({
                     name: judgeData.name,
-                    email,
-                    expertise: judgeData.expertise,
-                }),
+                    domain: judgeData.expertise,
+                    institution_id: institutionIdProp || user?.institution_id,
+                    is_test: false
+                })
             });
             if (res.ok) {
-                const result = await res.json();
                 setIsJudgeInviteOpen(false);
-                setRefreshCounter(prev => prev + 1);
-                if (result.email_sent === false) {
-                    alert('Judge added, but the invitation email could not be sent. Check SMTP settings or copy the evaluation link from the judge card.');
-                } else {
-                    alert('Judge invitation sent. They will receive an email with their evaluation link.');
-                }
+                setRefreshCounter(prev => prev + 1); // triggers fetchJudges
             } else {
                 const error = await res.json();
                 alert(error.detail || 'Failed to add judge');
             }
         } catch (error) {
-            try { console.error('Error adding judge:', error instanceof Error ? error.message : String(error)); } catch (_) {}
+            try { console.error('Error adding judge:', error instanceof Error ? error.message : String(error)); } catch (_) { }
             alert('Network error while adding judge');
         } finally {
             setIsInvitingJudge(false);
@@ -1891,7 +1823,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                         rubricScores: evaluationScores,
                         feedback: evaluationComment
                     })
-                  })
+                })
                 : await fetch(`${API_BASE_URL}/api/judges/score`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', ...authHeaders() },
@@ -1899,39 +1831,29 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                         submission_id: evaluatingSubmission._id,
                         judge_id: user.user_id,
                         scores: evaluationScores,
-                        criteria_scores: evaluationScores,
                         comments: evaluationComment,
                         event_id: eventId,
-                        team_id: evaluatingSubmission.team_id || evaluatingSubmission.teamId || evaluatingSubmission.user_id || ''
+                        team_id: evaluatingSubmission.team_id || evaluatingSubmission.teamId || ''
                     })
-                  });
+                });
             if (res.ok) {
                 setEvaluatingSubmission(null);
                 setRefreshCounter(prev => prev + 1);
-                fetchBundle();
                 alert("Evaluation submitted!");
             } else {
                 const err = await res.json();
                 alert(err.detail || "Failed to submit evaluation");
             }
         } catch (err) {
-            try { console.error("Evaluation error:", err instanceof Error ? err.message : String(err)); } catch (_) {}
+            try { console.error("Evaluation error:", err instanceof Error ? err.message : String(err)); } catch (_) { }
             alert("Network error while submitting evaluation");
         }
     };
 
     const handleBulkAssign = async (judgeId: string, specificIds?: string[]) => {
-        const rawIds = specificIds || selectedSubmissions;
-        const allSubs = [
-            ...(hackathonSubmissions || []),
-            ...(submissions || []),
-        ];
-        const targetIds = rawIds.filter((id) => {
-            const sub = allSubs.find((s: any) => String(s._id) === String(id));
-            return sub ? !resolveAssignedJudgeId(sub) : true;
-        });
+        const targetIds = specificIds || selectedSubmissions;
         if (targetIds.length === 0) {
-            alert(specificIds ? "This submission is already assigned to a judge." : "Please select at least one unassigned submission");
+            alert("Please select at least one submission");
             return;
         }
         try {
@@ -1949,22 +1871,347 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                 })
             });
             if (res.ok) {
-                const result = await res.json().catch(() => ({}));
                 setSelectedSubmissions([]);
-                setJudgeAssignmentModal({ isOpen: false, submissionId: null });
-                setBulkAssignJudgeId('');
                 setRefreshCounter(prev => prev + 1);
-                fetchBundle();
-                const emailNote = result?.email_sent === false ? '\n\nNote: assignment email could not be sent.' : '';
-                alert(`Judge assigned to ${targetIds.length} submission(s) in one consolidated email.${emailNote}`);
+                alert(`Judge assigned to ${targetIds.length} submission(s)`);
+                setIsBulkMode(false);
             } else {
                 const err = await res.json();
                 alert(err.detail || "Failed to assign judge");
             }
         } catch (err) {
-            try { console.error("Bulk assign error:", err instanceof Error ? err.message : String(err)); } catch (_) {}
+            try { console.error("Bulk assign error:", err instanceof Error ? err.message : String(err)); } catch (_) { }
             alert("Network error while assigning judge");
         }
+    };
+
+
+    const isSubmissionFileField = (f: any) => {
+        const t = (f.type || '').toLowerCase();
+        const l = (f.label || f.key || '').toLowerCase();
+        if (['file', 'document', 'link', 'upload', 'url', 'image', 'video', 'audio'].includes(t)) return true;
+        return l.includes('pdf') || l.includes('ppt') || l.includes('file') || l.includes('upload')
+            || l.includes('document') || l.includes('link') || l.includes('presentation') || l.includes('video');
+    };
+
+    const getStageTextFields = (stage: any) => {
+        const fields = stage?.fields || stage?.config?.fields || [];
+        return fields.filter((f: any) => !isSubmissionFileField(f));
+    };
+
+    const buildTeamLookup = () => {
+        const lookup = new Map<string, any>();
+        (teams || []).forEach((t: any) => {
+            if (t._id) lookup.set(String(t._id), t);
+            if (t.team_id) lookup.set(String(t.team_id), t);
+        });
+        return lookup;
+    };
+
+    const resolveTeamLeadName = (teamDoc: any) => {
+        const leader = teamDoc?.members?.find(
+            (m: any) => m.is_leader || String(m.user_id) === String(teamDoc?.team_leader_id)
+        );
+        return leader?.name || leader?.email || '';
+    };
+
+    type SubmissionAsset = { type: 'file' | 'link'; url: string; mime?: string; domain?: string };
+
+    const dataUriToBlobUrl = (dataUri: string): string => {
+        try {
+            const [meta, b64] = dataUri.split(',');
+            const mime = meta.split(':')[1]?.split(';')[0] || '';
+            const raw = atob(b64);
+            const buf = new Uint8Array(raw.length);
+            for (let i = 0; i < raw.length; i++) buf[i] = raw.charCodeAt(i);
+            return URL.createObjectURL(new Blob([buf], { type: mime }));
+        } catch { return dataUri; }
+    };
+
+    const collectSubmissionAssets = (sub: any, activeStage: any): SubmissionAsset[] => {
+        const assets: SubmissionAsset[] = [];
+        const seenUrls = new Set<string>();
+        const pushAsset = (value: string) => {
+            if (!value?.trim()) return;
+            if (seenUrls.has(value)) return;
+            seenUrls.add(value);
+            if (value.startsWith('data:')) {
+                assets.push({ type: 'file', url: value, mime: value.split(';')[0].split(':')[1] || '' });
+            } else if (value.startsWith('http://') || value.startsWith('https://')) {
+                let domain = '';
+                try { domain = new URL(value).hostname; } catch { /* ignore */ }
+                assets.push({ type: 'link', url: value, domain });
+            } else if (value.startsWith('/api/')) {
+                const ext = value.match(/\.(\w+)(?:\?.*)?$/)?.[1]?.toLowerCase();
+                const extMime: Record<string, string> = {
+                    pdf: 'application/pdf',
+                    ppt: 'application/vnd.ms-powerpoint',
+                    pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+                    doc: 'application/msword',
+                    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                    png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif',
+                };
+                assets.push({ type: 'file', url: value, mime: (ext && extMime[ext]) || '' });
+            }
+        };
+
+        if (sub.pptLink) pushAsset(sub.pptLink);
+        if (sub.githubLink) pushAsset(sub.githubLink);
+
+        const stageData = sub._sourceType === 'stage' ? sub.data : null;
+        const fields = activeStage?.fields || activeStage?.config?.fields || [];
+        if (stageData && typeof stageData === 'object') {
+            for (const f of fields) {
+                const key = f.id || f.key;
+                const value = stageData[key];
+                if (typeof value === 'string') pushAsset(value);
+            }
+            if (fields.length === 0) {
+                Object.values(stageData).forEach((value) => {
+                    if (typeof value === 'string') pushAsset(value);
+                });
+            }
+        }
+        return assets;
+    };
+
+    const handleOpenSubmissionTeam = async (sub: any) => {
+        const teamId = sub.team_id || sub.teamId;
+        const displayName = sub.teamName || sub.team_name || sub.user_name || sub.name || 'Team';
+        let team = teams.find(
+            (t: any) =>
+                (teamId && (String(t._id) === String(teamId) || String(t.team_id) === String(teamId)))
+                || (displayName && String(t.team_name || '').toLowerCase() === String(displayName).toLowerCase())
+        );
+
+        if (!team && eventId) {
+            setLoadingTeamDetails(true);
+            try {
+                const res = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/teams`, {
+                    headers: { ...authHeaders() },
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    const freshTeams = Array.isArray(data) ? data : [];
+                    setTeams(freshTeams);
+                    team = freshTeams.find(
+                        (t: any) =>
+                            (teamId && (String(t._id) === String(teamId) || String(t.team_id) === String(teamId)))
+                            || (displayName && String(t.team_name || '').toLowerCase() === String(displayName).toLowerCase())
+                    );
+                }
+            } catch (err) {
+                console.error('Failed to fetch team details:', err);
+            } finally {
+                setLoadingTeamDetails(false);
+            }
+        }
+
+        if (team) {
+            setSelectedTeam(team);
+            return;
+        }
+
+        const leadName = sub.teamLead || sub.team_lead || '';
+        const members: any[] = [];
+        if (leadName) members.push({ name: leadName, role: 'Lead', is_leader: true });
+        const rawMembers = sub.teamMembers || sub.team_members;
+        if (rawMembers) {
+            const names: string[] = typeof rawMembers === 'string'
+                ? rawMembers.split(',').map((m: string) => m.trim()).filter(Boolean)
+                : (Array.isArray(rawMembers) ? rawMembers : []);
+            names.forEach((name: string) => {
+                if (name && name.toLowerCase() !== leadName.toLowerCase()) {
+                    members.push({ name, role: 'Member' });
+                }
+            });
+        }
+        setSelectedTeam({
+            _id: teamId || sub._id,
+            team_name: displayName,
+            members,
+            status: sub.status || 'Pending',
+        });
+    };
+
+    const renderSubmissionAssetButtons = (assets: SubmissionAsset[]) => {
+        if (assets.length === 0) {
+            return <span className="text-xs text-slate-300 font-bold italic">No files</span>;
+        }
+        return (
+            <div className="flex flex-wrap items-center gap-2">
+                {assets.map((asset, ai) => {
+                    const icon = asset.type === 'file'
+                        ? (asset.mime?.includes('pdf') ? <FileText size={16} /> :
+                            asset.mime?.includes('presentation') ? <FileCheck size={16} /> :
+                                asset.mime?.startsWith('image/') ? <FileImage size={16} /> :
+                                    asset.mime?.startsWith('video/') ? <FileVideo size={16} /> : <FileText size={16} />)
+                        : (asset.domain?.includes('github.com') ? <Github size={16} /> : <Globe size={16} />);
+                    return asset.type === 'file' ? (
+                        <button
+                            key={ai}
+                            type="button"
+                            onClick={() => {
+                                const ext = asset.mime
+                                    ? (asset.mime.split('/')[1] || 'bin')
+                                    : (asset.url.match(/\.(\w+)(?:\?.*)?$/)?.[1] || 'bin');
+                                setPreviewAsset({ url: asset.url, filename: `Attachment.${ext}`, type: 'file' });
+                            }}
+                            className="flex items-center gap-2 justify-center px-3 h-9 bg-amber-50 text-amber-600 rounded-xl border border-amber-100 hover:bg-amber-100 transition-colors cursor-pointer text-xs font-bold whitespace-nowrap"
+                        >
+                            {icon} {asset.mime?.includes('pdf') ? 'PDF' : asset.mime?.includes('presentation') ? 'PPT' : 'File'}
+                        </button>
+                    ) : (
+                        <a
+                            key={ai}
+                            href={asset.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="flex items-center gap-2 justify-center px-3 h-9 bg-slate-100 text-slate-600 rounded-xl border border-slate-200 hover:bg-slate-200 transition-colors text-xs font-bold whitespace-nowrap"
+                        >
+                            {icon} {asset.domain || 'Link'}
+                        </a>
+                    );
+                })}
+            </div>
+        );
+    };
+
+    const renderTeamDetailModal = () => {
+        if (!selectedTeam) return null;
+        return (
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex justify-center items-center p-4 animate-in fade-in duration-300" onClick={() => setSelectedTeam(null)}>
+                <div className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col animate-in zoom-in-95 duration-300" onClick={(e) => e.stopPropagation()}>
+                    <div className="p-8 border-b bg-slate-50/50">
+                        <div className="flex justify-between items-start">
+                            <div>
+                                <div className="flex items-center gap-3 mb-2">
+                                    <h2 className="text-2xl font-black text-slate-900 tracking-tight">{selectedTeam.team_name || 'Unnamed Team'}</h2>
+                                    <span className={`px-3 py-1 inline-flex text-[10px] font-black uppercase tracking-widest rounded-full border ${selectedTeam.status === 'approved' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
+                                            selectedTeam.status === 'rejected' ? 'bg-red-50 text-red-700 border-red-100' :
+                                                'bg-slate-50 text-slate-600 border-slate-100'
+                                        }`}>
+                                        {selectedTeam.status || 'Pending'}
+                                    </span>
+                                </div>
+                                <div className="flex items-center gap-4 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                                    <span className="flex items-center gap-1.5"><Users size={14} /> {selectedTeam.members?.length || 0} Members</span>
+                                    <span>•</span>
+                                    <span>Team ID: {selectedTeam._id}</span>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setSelectedTeam(null)}
+                                className="w-10 h-10 flex items-center justify-center rounded-xl bg-white border border-slate-100 text-slate-400 hover:text-slate-900 hover:border-slate-200 transition-all shadow-sm"
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto p-8">
+                        <div className="space-y-8">
+                            <div>
+                                <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4">Team Roster</h3>
+                                <div className="bg-slate-50 rounded-[1.5rem] border border-slate-100 overflow-hidden">
+                                    {loadingTeamDetails ? (
+                                        <div className="flex items-center justify-center py-16">
+                                            <Loader2 size={28} className="animate-spin text-[#6C3BFF]" />
+                                        </div>
+                                    ) : (
+                                        <table className="min-w-full divide-y divide-slate-200">
+                                            <thead className="bg-slate-100/50">
+                                                <tr>
+                                                    <th className="px-6 py-4 text-left text-[10px] font-black text-slate-500 uppercase tracking-widest">Member</th>
+                                                    <th className="px-6 py-4 text-left text-[10px] font-black text-slate-500 uppercase tracking-widest">Role</th>
+                                                    <th className="px-6 py-4 text-center text-[10px] font-black text-slate-500 uppercase tracking-widest">Registration</th>
+                                                    <th className="px-6 py-4 text-center text-[10px] font-black text-slate-500 uppercase tracking-widest">Submission</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100 bg-white">
+                                                {(selectedTeam.members || []).length > 0 ? selectedTeam.members.map((member: any, index: number) => (
+                                                    <tr key={index} className="hover:bg-slate-50/50 transition-colors">
+                                                        <td className="px-6 py-4">
+                                                            <div className="font-bold text-slate-900 text-sm">{member.name || 'N/A'}</div>
+                                                            <div className="text-xs text-slate-400 font-medium">{member.email || 'N/A'}</div>
+                                                        </td>
+                                                        <td className="px-6 py-4">
+                                                            {member.is_leader ? (
+                                                                <span className="px-2.5 py-1 bg-indigo-50 text-indigo-600 rounded-lg text-[10px] font-black uppercase tracking-wider border border-indigo-100">
+                                                                    Leader
+                                                                </span>
+                                                            ) : (
+                                                                <span className="text-[11px] font-bold text-slate-400">{member.role || 'Member'}</span>
+                                                            )}
+                                                        </td>
+                                                        <td className="px-6 py-4 text-center">
+                                                            <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider ${member.registration_status === 'shortlisted' ? 'bg-emerald-50 text-emerald-600' :
+                                                                    member.registration_status === 'rejected' ? 'bg-red-50 text-red-600' :
+                                                                        'bg-slate-50 text-slate-500'
+                                                                }`}>
+                                                                {member.registration_status || 'Registered'}
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-6 py-4 text-center">
+                                                            <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider ${member.submission_status === 'submitted' ? 'bg-indigo-50 text-indigo-600' :
+                                                                    'bg-slate-50 text-slate-500'
+                                                                }`}>
+                                                                {member.submission_status === 'submitted' ? 'Submitted' : 'Pending'}
+                                                            </span>
+                                                        </td>
+                                                    </tr>
+                                                )) : (
+                                                    <tr>
+                                                        <td colSpan={4} className="px-6 py-10 text-center text-sm font-bold text-slate-400">
+                                                            No member details available for this team.
+                                                        </td>
+                                                    </tr>
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {activeTab === 'teams' && (
+                        <div className="p-8 border-t bg-slate-50/50 flex justify-end gap-3">
+                            <button
+                                type="button"
+                                onClick={() => setSelectedTeam(null)}
+                                className="px-8 py-3 bg-white border border-slate-200 text-slate-600 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 hover:text-slate-900 transition-all shadow-sm"
+                            >
+                                Close
+                            </button>
+                            <div className="flex gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        handleUpdateTeamStatus(selectedTeam._id, 'approved');
+                                        setSelectedTeam(null);
+                                    }}
+                                    className="px-6 py-3 bg-emerald-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-900/20"
+                                >
+                                    Approve Team
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        handleUpdateTeamStatus(selectedTeam._id, 'rejected');
+                                        setSelectedTeam(null);
+                                    }}
+                                    className="px-6 py-3 bg-red-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-red-700 transition-all shadow-lg shadow-red-900/20"
+                                >
+                                    Reject Team
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </div>
+        );
     };
 
 
@@ -1985,43 +2232,64 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
         { id: 'judges', label: 'Judges', icon: Gavel },
     ];
 
-    
+
     const renderTabContent_SubmissionManagement = () => {
+        const teamLookup = buildTeamLookup();
         // Merge hackathon + regular submissions for ALL event types
         const allSubmissions = [
-            ...(hackathonSubmissions || []).filter((s: any) => s && (s._id || s.id) && (s.project_title || s.team_name || s.teamName)).map((s: any) => ({
+            ...(hackathonSubmissions || []).map((s: any) => ({
                 ...s,
                 _sourceType: 'hackathon',
                 project_title: s.project_title || s.teamName || s.team_name || '',
-                team_name: s.team_name || s.teamLead || s.teamLeadName || '',
+                team_name: s.team_name || s.teamName || s.teamLead || s.teamLeadName || '',
+                teamName: s.teamName || s.team_name || '',
+                teamLead: s.teamLead || s.team_lead || '',
                 event_title: s.event_title || s.eventName || '',
                 status: s.status || '',
             })),
             ...(submissions || []).map((s: any) => {
                 const isStage = s.source === 'stage_deliverable';
                 const data = s.data || {};
+                const teamDoc = s.team_id ? teamLookup.get(String(s.team_id)) : null;
+                const resolvedLead = s.teamLead || s.team_lead || resolveTeamLeadName(teamDoc) || s.user_name || s.name || '';
                 // For stage deliverables, the actual content is in the data field
                 const stageFileField = isStage ? Object.keys(data).find(k => typeof data[k] === 'string' && data[k].startsWith('data:')) : null;
                 const stageUrlField = isStage ? Object.keys(data).find(k => typeof data[k] === 'string' && (data[k].startsWith('http://') || data[k].startsWith('https://'))) : null;
-                const stageDesc = isStage ? (data.description || data.problem_statement || data.solution || '') : '';
+                const stageDesc = isStage ? (data.description || data.problem_statement || data.solution || data.idea_abstract || '') : '';
+                const resolvedTeamName =
+                    s.teamName ||
+                    s.team_name ||
+                    teamDoc?.team_name ||
+                    teamDoc?.name ||
+                    data.team_display_name ||
+                    data.team_name ||
+                    s.user_name ||
+                    s.name ||
+                    '';
                 return {
                     ...s,
                     _sourceType: isStage ? 'stage' : 'regular',
-                    teamName: s.teamName || s.team_name || s.user_name || s.name || '',
-                    teamLead: s.teamLead || s.team_lead || s.team_name || s.user_name || s.name || '',
+                    teamName: resolvedTeamName,
+                    teamLead: resolvedLead,
                     problemStatement: isStage
                         ? (stageDesc || (stageUrlField ? 'Submitted link' : stageFileField ? 'Submitted file' : '') || s.stage_name || '')
                         : (s.problemStatement || s.problem_statement || s.stage_name || s.stage_type || ''),
+                    solutionDescription: isStage
+                        ? (data.solution || data.proposed_solution || data.proposed_solution_description || '')
+                        : (s.solutionDescription || s.solution || ''),
+                    ideaAbstract: isStage
+                        ? (data.idea_abstract || data.abstract || data.description || data.problem_statement || '')
+                        : (s.ideaAbstract || s.problemStatement || s.problem_statement || ''),
                     pptLink: isStage
                         ? (stageFileField ? data[stageFileField] : stageUrlField ? data[stageUrlField] : '')
                         : (s.pptLink || s.ppt_link || ''),
                     githubLink: s.githubLink || s.github_link || '',
-                    assignedJudgeId: resolveAssignedJudgeId(s),
+                    assignedJudgeId: s.assignedJudgeId || s.assigned_judge_id || (Array.isArray(s.assigned_judges) && s.assigned_judges.length > 0 ? s.assigned_judges[0].judge_id : ''),
                     totalScore: s.totalScore ?? s.total_score ?? 0,
                     project_title: isStage
                         ? (s.stage_name || s.stage_type || '')
-                        : (s.project_title || s.title || s.team_name || ''),
-                    team_name: s.team_name || s.user_name || s.name || '',
+                        : (s.project_title || s.title || resolvedTeamName || ''),
+                    team_name: resolvedTeamName,
                     event_title: s.event_title || event?.title || s.stage_name || '',
                     status: s.status || '',
                 };
@@ -2030,88 +2298,31 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
         // Dedup by _id or composite key
         const seenKeys = new Set<string>();
         const dedupedSubmissions = allSubmissions.filter(s => {
-            const key = s._id
-                || `${s.team_id || s.teamId || s.user_id}_${s.stage_id || s.stage_name || ''}`;
+            const key = s._id || `${s.team_id || s.teamId}_${s.stage_id || ''}`;
             if (seenKeys.has(key)) return false;
             seenKeys.add(key);
             return true;
         });
-        const submissionStages = stages.filter((s) => {
-            const t = String(s.type || '').toUpperCase();
-            const n = String(s.name || '').toLowerCase();
-            return !['REGISTRATION', 'TEAM_FORMATION', 'QUIZ'].includes(t)
-                && !n.includes('registration')
-                && !n.includes('team formation');
-        });
-        const activeStage = submissionStages.find((s) => s.id === selectedSubmissionStageId) || submissionStages[0];
-        const stageDomainOptions = (activeStage?.config?.domains || activeStage?.domains || []) as string[];
-        const submissionDomains = dedupedSubmissions
-            .filter((s) => !selectedSubmissionStageId || s.stage_id === selectedSubmissionStageId)
-            .map((s) => s.domain || (s.data && (s.data.domain || s.data.Domain)))
-            .filter(Boolean);
-        const domains = ['All Domains', ...new Set([...stageDomainOptions, ...submissionDomains])];
+        const allDomains = [...new Set(dedupedSubmissions.map(s => s.domain).filter(Boolean))];
+        const domains = ['All Domains', ...allDomains];
+        const projectStages = stages.filter(s => s.type === 'SUBMISSION' || s.type === 'DELIVERABLE' || !s.type);
+
         const filtered = dedupedSubmissions.filter(s => {
             const name = s.teamName || s.team_name || s.user_name || '';
             const lead = s.teamLead || s.team_lead || '';
             const matchesSearch = name.toLowerCase().includes(searchQuery.toLowerCase()) || lead.toLowerCase().includes(searchQuery.toLowerCase());
-            const subDomain = s.domain || s.data?.domain || s.data?.Domain;
-            const matchesDomain = domainFilter === 'All Domains' || subDomain === domainFilter;
-            const assignedId = resolveAssignedJudgeId(s);
-            const matchesJudge = judgeFilter === 'All Judges'
-                || (judgeFilter === '' ? !assignedId : assignedId === judgeFilter);
-            const matchesStage = !selectedSubmissionStageId
-                || s.stage_id === selectedSubmissionStageId
-                || (activeStage?.name && s.stage_name === activeStage.name);
+            const matchesDomain = domainFilter === 'All Domains' || s.domain === domainFilter;
+            const matchesJudge = judgeFilter === 'All Judges' || s.assignedJudgeId === judgeFilter;
+            const matchesStage = !selectedProjectStageId || String(s.stage_id || '') === String(selectedProjectStageId);
             return matchesSearch && matchesDomain && matchesJudge && matchesStage;
-        });
-
-        const getStageFieldGroups = (sub: any) => {
-            const stageData = sub._sourceType === 'stage' ? sub.data : null;
-            if (!stageData || typeof stageData !== 'object') {
-                return { texts: [] as { label: string; value: string }[], files: [] as { key: string; label: string; value: any; mime?: string }[] };
-            }
-            const stageConfig = stages.find((st: any) => st.id === sub.stage_id || st._id === sub.stage_id);
-            const fieldConfigs: Record<string, any> = {};
-            if (stageConfig) {
-                const fields = stageConfig.fields || stageConfig.config?.fields || [];
-                for (const f of fields) fieldConfigs[f.id || f.key] = f;
-            }
-            const texts: { label: string; value: string }[] = [];
-            const files: { key: string; label: string; value: any; mime?: string }[] = [];
-            for (const [key, value] of Object.entries(stageData)) {
-                const label = fieldConfigs[key]?.label || key.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
-                if (typeof value === 'object' && value && (value as any)._stored_file) {
-                    files.push({ key, label, value, mime: (value as any).mime || '' });
-                } else if (typeof value === 'string' && value.startsWith('data:')) {
-                    const mime = value.split(';')[0].split(':')[1] || '';
-                    files.push({ key, label, value, mime });
-                } else if (typeof value === 'string' && (value.startsWith('http://') || value.startsWith('https://'))) {
-                    files.push({ key, label, value, mime: 'url' });
-                } else if (typeof value === 'string' && value.trim()) {
-                    texts.push({ label, value });
-                }
-            }
-            return { texts, files };
-        };
-
-        const bundleItemsRaw = bundleData?.[bundleTab] || [];
-        const bundleItems = bundleItemsRaw.filter((item: any) => {
-            if (bundleNotifyFilter === 'ALL') return true;
-            const st = String(item.status || '').toLowerCase();
-            const isApproved = st.includes('approve') || st.includes('accept') || st.includes('shortlist');
-            if (!isApproved) return false;
-            const notified = !!item.notified_at;
-            if (bundleNotifyFilter === 'APPROVED_NOTIFIED') return notified;
-            if (bundleNotifyFilter === 'APPROVED_UNNOTIFIED') return !notified;
-            return true;
         });
 
         if (submissionSubTab === 'assessments') {
             const quizStages = stages.filter(s => s.type === 'QUIZ' && s.config?.quiz_id);
             const passedCount = quizResults.filter(r => r.passed).length;
             const filteredQuizzes = quizResults.filter(r =>
-                !quizResultsSearch || 
-                r.name.toLowerCase().includes(quizResultsSearch.toLowerCase()) || 
+                !quizResultsSearch ||
+                r.name.toLowerCase().includes(quizResultsSearch.toLowerCase()) ||
                 r.email.toLowerCase().includes(quizResultsSearch.toLowerCase())
             );
 
@@ -2126,17 +2337,17 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                     </div>
 
                     <div className="flex bg-slate-100 p-1.5 rounded-[2.2rem] shadow-inner border border-slate-200/50 w-fit mx-4">
-                        <button 
+                        <button
                             type="button"
                             onClick={() => setSubmissionSubTab('projects')}
-                            className={`px-8 py-3 rounded-[1.8rem] text-[10px] font-black uppercase tracking-widest transition-all ${submissionSubTab === 'projects' ? 'bg-white text-[#6C3BFF] shadow-xl' : 'text-slate-500 hover:text-slate-800'}`}
+                            className={`px-8 py-3 rounded-[1.8rem] text-[10px] font-black uppercase tracking-widest transition-all ${false ? 'bg-white text-[#6C3BFF] shadow-xl' : 'text-slate-500 hover:text-slate-800'}`}
                         >
                             Projects & Deliverables
                         </button>
-                        <button 
+                        <button
                             type="button"
                             onClick={() => setSubmissionSubTab('assessments')}
-                            className={`px-8 py-3 rounded-[1.8rem] text-[10px] font-black uppercase tracking-widest transition-all ${submissionSubTab === 'assessments' ? 'bg-white text-[#6C3BFF] shadow-xl' : 'text-slate-500 hover:text-slate-800'}`}
+                            className={`px-8 py-3 rounded-[1.8rem] text-[10px] font-black uppercase tracking-widest transition-all ${true ? 'bg-white text-[#6C3BFF] shadow-xl' : 'text-slate-500 hover:text-slate-800'}`}
                         >
                             Quizzes & Assessments
                         </button>
@@ -2156,7 +2367,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                 <div className="flex flex-wrap items-center gap-4">
                                     <div className="flex flex-col gap-1">
                                         <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">Select Quiz Stage</label>
-                                        <select 
+                                        <select
                                             value={selectedSubTabQuizStageId}
                                             onChange={(e) => setSelectedSubTabQuizStageId(e.target.value)}
                                             className="px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 outline-none focus:ring-4 focus:ring-purple-50 transition-all min-w-[240px]"
@@ -2170,9 +2381,9 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                         <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">Search Participants</label>
                                         <div className="relative">
                                             <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                                            <input 
-                                                type="text" 
-                                                placeholder="Search by name or email..." 
+                                            <input
+                                                type="text"
+                                                placeholder="Search by name or email..."
                                                 value={quizResultsSearch}
                                                 onChange={(e) => setQuizResultsSearch(e.target.value)}
                                                 className="pl-14 pr-8 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 outline-none focus:bg-white focus:ring-4 focus:ring-purple-50 transition-all w-80"
@@ -2187,7 +2398,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                             <CheckCircle2 size={14} /> Notification sent
                                         </span>
                                     )}
-                                    <button 
+                                    <button
                                         type="button"
                                         onClick={handleQuizNotifyShortlisted}
                                         disabled={quizNotifying || !quizResults.some(r => r.participant_status === 'shortlisted' || r.participant_status === 'accepted')}
@@ -2197,7 +2408,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                         {quizNotifying ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
                                         Notify All
                                     </button>
-                                    <button 
+                                    <button
                                         type="button"
                                         onClick={handleQuizShortlist}
                                         disabled={quizSelectedIds.size === 0 || quizShortlisting}
@@ -2236,12 +2447,12 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                         No quiz attempts submitted yet for this stage.
                                     </div>
                                 ) : (
-                                    <table className="w-full text-left">
+<table className="w-full text-left table-fixed border-collapse">
                                         <thead>
                                             <tr className="bg-slate-50/50">
                                                 <th className="px-10 py-6 w-10">
-                                                    <input 
-                                                        type="checkbox" 
+                                                    <input
+                                                        type="checkbox"
                                                         checked={filteredQuizzes.length > 0 && quizSelectedIds.size === filteredQuizzes.length}
                                                         onChange={() => toggleQuizSelectAll(filteredQuizzes)}
                                                         className="w-5 h-5 rounded border-2 border-slate-200 text-purple-600 focus:ring-purple-500"
@@ -2260,8 +2471,8 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                                 return (
                                                     <tr key={r.user_id} className={`hover:bg-slate-50/30 transition-colors group ${isShortlisted ? 'bg-emerald-50/20' : ''}`}>
                                                         <td className="px-10 py-8">
-                                                            <input 
-                                                                type="checkbox" 
+                                                            <input
+                                                                type="checkbox"
                                                                 checked={quizSelectedIds.has(r.user_id)}
                                                                 onChange={() => toggleQuizSelect(r.user_id)}
                                                                 disabled={isShortlisted}
@@ -2328,68 +2539,55 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                     <div className="absolute -right-20 -top-20 w-80 h-80 bg-purple-600/20 rounded-full blur-[100px]"></div>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-4 px-4">
-                    <div className="flex bg-slate-100 p-1.5 rounded-[2.2rem] shadow-inner border border-slate-200/50 w-fit">
-                        <button 
-                            type="button"
-                            onClick={() => setSubmissionSubTab('projects')}
-                            className={`px-8 py-3 rounded-[1.8rem] text-[10px] font-black uppercase tracking-widest transition-all ${submissionSubTab === 'projects' ? 'bg-white text-[#6C3BFF] shadow-xl' : 'text-slate-500 hover:text-slate-800'}`}
-                        >
-                            Projects & Deliverables
-                        </button>
-                        <button 
-                            type="button"
-                            onClick={() => {
-                                setSubmissionSubTab('assessments');
-                                const linkedQuiz = stages.find((s) => s.id === selectedSubmissionStageId && s.type === 'QUIZ' && s.config?.quiz_id);
-                                if (linkedQuiz) setSelectedSubTabQuizStageId(linkedQuiz.id);
-                            }}
-                            className={`px-8 py-3 rounded-[1.8rem] text-[10px] font-black uppercase tracking-widest transition-all ${submissionSubTab === 'assessments' ? 'bg-white text-[#6C3BFF] shadow-xl' : 'text-slate-500 hover:text-slate-800'}`}
-                        >
-                            Quizzes & Assessments
-                        </button>
-                    </div>
-                    {submissionStages.length > 0 && (
+                <div className="flex bg-slate-100 p-1.5 rounded-[2.2rem] shadow-inner border border-slate-200/50 w-fit mx-4">
+                    <button
+                        type="button"
+                        onClick={() => setSubmissionSubTab('projects')}
+                        className={`px-8 py-3 rounded-[1.8rem] text-[10px] font-black uppercase tracking-widest transition-all ${submissionSubTab === 'projects' ? 'bg-white text-[#6C3BFF] shadow-xl' : 'text-slate-500 hover:text-slate-800'}`}
+                    >
+                        Projects & Deliverables
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setSubmissionSubTab('assessments')}
+                        className={`px-8 py-3 rounded-[1.8rem] text-[10px] font-black uppercase tracking-widest transition-all ${false ? 'bg-white text-[#6C3BFF] shadow-xl' : 'text-slate-500 hover:text-slate-800'}`}
+                    >
+                        Quizzes & Assessments
+                    </button>
+                    {projectStages.length > 0 && (
                         <select
-                            value={selectedSubmissionStageId}
-                            onChange={(e) => {
-                                const nextId = e.target.value;
-                                setSelectedSubmissionStageId(nextId);
-                                const quizForStage = stages.find((s) => s.id === nextId && s.type === 'QUIZ' && s.config?.quiz_id);
-                                if (quizForStage) setSelectedSubTabQuizStageId(quizForStage.id);
-                            }}
-                            className="px-6 py-3.5 bg-white border border-slate-200 rounded-2xl text-sm font-bold text-slate-900 outline-none focus:ring-4 focus:ring-purple-50 min-w-[220px]"
+                            value={selectedProjectStageId}
+                            onChange={(e) => setSelectedProjectStageId(e.target.value)}
+                            className="ml-4 px-6 py-2 bg-white border border-slate-200 rounded-[1.8rem] text-[10px] font-black uppercase tracking-widest text-[#6C3BFF] outline-none shadow-sm focus:ring-2 focus:ring-purple-200"
                         >
-                            {submissionStages.map((s) => (
-                                <option key={s.id} value={s.id}>{s.name || s.id}</option>
+                            <option value="">All Stages</option>
+                            {projectStages.map(s => (
+                                <option key={s.id} value={s.id}>{s.name}</option>
                             ))}
                         </select>
                     )}
-                    <span className="px-4 py-2 bg-purple-50 text-purple-700 rounded-xl text-[10px] font-black uppercase tracking-widest">
-                        Select teams below to assign judges in bulk
-                    </span>
                 </div>
 
                 <div className="flex flex-wrap items-center justify-between gap-6 px-4">
                     <div className="flex flex-wrap items-center gap-4">
                         <div className="relative">
                             <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                            <input 
-                                type="text" 
-                                placeholder="Search teams or leads..." 
+                            <input
+                                type="text"
+                                placeholder="Search teams or leads..."
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                                 className="pl-14 pr-8 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 outline-none focus:bg-white focus:ring-4 focus:ring-purple-50 transition-all w-80"
                             />
                         </div>
-                        <select 
+                        <select
                             value={domainFilter}
                             onChange={(e) => setDomainFilter(e.target.value)}
                             className="px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 outline-none focus:ring-4 focus:ring-purple-50 transition-all"
                         >
                             {domains.map(d => <option key={d} value={d}>{d}</option>)}
                         </select>
-                        <select 
+                        <select
                             value={judgeFilter}
                             onChange={(e) => setJudgeFilter(e.target.value)}
                             className="px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 outline-none focus:ring-4 focus:ring-purple-50 transition-all max-w-[200px] truncate"
@@ -2399,435 +2597,529 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                             {institutionJudges.map(j => <option key={j._id} value={j._id}>{j.name}</option>)}
                         </select>
                     </div>
-                    <div className="flex items-center gap-4" />
+                    <div className="flex items-center gap-4">
+                        <button
+                            onClick={() => setIsBulkMode(!isBulkMode)}
+                            className={`px-6 py-4 rounded-2xl text-xs font-black uppercase tracking-widest transition-all ${isBulkMode ? 'bg-purple-600 text-white shadow-xl shadow-purple-600/20' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                        >
+                            Bulk Assignment
+                        </button>
+                        {isBulkMode && selectedSubmissions.length > 0 && (
+                            <select
+                                onChange={(e) => handleBulkAssign(e.target.value)}
+                                className="px-6 py-4 bg-slate-900 text-white rounded-2xl text-xs font-black uppercase tracking-widest outline-none shadow-xl cursor-pointer"
+                            >
+                                <option value="">Assign Judge to ({selectedSubmissions.length})</option>
+                                {(institutionJudges || []).map((j: any) => (
+                                    <option key={j._id} value={j._id}>{j.name}</option>
+                                ))}
+                            </select>
+                        )}
+                    </div>
                 </div>
 
-                <div className="bg-white rounded-[3rem] border border-slate-100 overflow-hidden shadow-2xl shadow-slate-200/20">
-                    <table className="w-full text-left">
-                        <thead>
-                            <tr className="bg-slate-50/50">
-                                <th className="px-10 py-6 w-10"></th>
-                                <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Team Detail</th>
-                                <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Submission</th>
-                                <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Files</th>
-                                <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Assigned Judge</th>
-                                <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Score</th>
-                                <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-50">
-                            {filtered.length > 0 ? (
-                                filtered.map((sub, idx) => (
-                                    <tr key={sub._id} className="hover:bg-slate-50/30 transition-colors group">
-                                        <td className="px-10 py-8">
-                                            <input 
-                                                type="checkbox" 
-                                                checked={selectedSubmissions.includes(sub._id)}
-                                                disabled={!!resolveAssignedJudgeId(sub)}
-                                                title={resolveAssignedJudgeId(sub) ? 'Already assigned to a judge' : 'Select for bulk assignment'}
-                                                onChange={(e) => {
-                                                    if (e.target.checked) setSelectedSubmissions([...selectedSubmissions, sub._id]);
-                                                    else setSelectedSubmissions(selectedSubmissions.filter(id => id !== sub._id));
-                                                }}
-                                                className="w-5 h-5 rounded border-2 border-slate-200 text-purple-600 focus:ring-purple-500 disabled:opacity-30"
-                                            />
-                                        </td>
-                                        <td className="px-10 py-8">
-                                            <div className="flex flex-col">
-                                                <span className="font-black text-slate-900 text-lg tracking-tight">{sub.teamName || sub.team_name || sub.teamLead || sub.team_lead || sub.user_name || sub.name}</span>
-                                                {sub.teamLead || sub.team_lead || sub.team_name ? (
-                                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Lead: {sub.teamLead || sub.team_lead || sub.team_name}</span>
-                                                ) : null}
-                                                {(sub.domain || sub.data?.domain) && (
-                                                    <span className="text-[9px] font-black text-purple-600 uppercase tracking-[0.2em] mt-2">{sub.domain || sub.data?.domain}</span>
-                                                )}
-                                            </div>
-                                        </td>
-                                        <td className="px-10 py-8 max-w-xs">
-                                            {(() => {
-                                                const { texts } = getStageFieldGroups(sub);
-                                                if (texts.length > 0) {
-                                                    return (
-                                                        <div className="space-y-2">
-                                                            {texts.slice(0, 2).map((t, i) => (
-                                                                <button
-                                                                    key={i}
-                                                                    type="button"
-                                                                    onClick={() => setTextPreview({ title: t.label, content: t.value })}
-                                                                    className="block text-left w-full group"
-                                                                >
-                                                                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{t.label}</span>
-                                                                    <p className="text-sm font-bold text-slate-800 line-clamp-2 group-hover:text-[#6C3BFF] transition-colors">{t.value}</p>
-                                                                </button>
-                                                            ))}
-                                                        </div>
-                                                    );
-                                                }
-                                                const descText = sub.problemStatement && !['Submitted link', 'Submitted file'].includes(sub.problemStatement) ? sub.problemStatement : '';
-                                                return descText ? (
-                                                    <button type="button" onClick={() => setTextPreview({ title: 'Submission', content: descText })} className="text-sm font-bold text-slate-800 line-clamp-2 text-left hover:text-[#6C3BFF]">{descText}</button>
-                                                ) : <span className="text-slate-300 text-xs font-bold">—</span>;
-                                            })()}
-                                        </td>
-                                        <td className="px-10 py-8">
-                                            <div className="flex flex-wrap items-center gap-2">
-                                                {(() => {
-                                                    const { files } = getStageFieldGroups(sub);
-                                                    if (files.length > 0) {
-                                                        return files.map((f) => {
-                                                            const mime = f.mime || '';
-                                                            const isUrl = mime === 'url';
-                                                            const icon = isUrl ? <Globe size={16} /> :
-                                                                mime.includes('pdf') ? <FileText size={16} /> :
-                                                                mime.includes('presentation') || mime.includes('ppt') ? <FileCheck size={16} /> :
-                                                                mime.startsWith('image/') ? <FileImage size={16} /> :
-                                                                mime.startsWith('video/') ? <FileVideo size={16} /> : <FileText size={16} />;
-                                                            const badge = getFileTypeBadge(f.value?.filename || f.label, mime);
-                                                            if (typeof f.value === 'object' && f.value?._stored_file) {
-                                                                return (
-                                                                    <button key={f.key} type="button" title={`${f.label} (${badge})`}
-                                                                        onClick={() => openStageSubmissionFile(String(sub._id), f.key, f.value.filename)}
-                                                                        className="flex items-center gap-1.5 px-2.5 py-1.5 bg-amber-50 text-amber-700 rounded-xl border border-amber-100 hover:bg-amber-100 transition-colors text-[9px] font-black uppercase tracking-wider">
-                                                                        {icon}<span>{badge}</span>
-                                                                    </button>
-                                                                );
-                                                            }
-                                                            if (typeof f.value === 'string' && f.value.startsWith('data:')) {
-                                                                const dataFilename = buildPreviewFilename(f.label, mime);
-                                                                return (
-                                                                    <button key={f.key} type="button" title={`${f.label} (${badge})`}
-                                                                        onClick={() => setPreviewAsset({ url: f.value, filename: dataFilename, type: 'file' })}
-                                                                        className="flex items-center gap-1.5 px-2.5 py-1.5 bg-amber-50 text-amber-700 rounded-xl border border-amber-100 hover:bg-amber-100 transition-colors text-[9px] font-black uppercase tracking-wider">
-                                                                        {icon}<span>{badge}</span>
-                                                                    </button>
-                                                                );
-                                                            }
-                                                            if (isUrl) {
-                                                                return (
-                                                                    <a key={f.key} href={f.value} target="_blank" rel="noreferrer" title={f.label}
-                                                                        className="flex items-center justify-center w-9 h-9 bg-slate-100 text-slate-600 rounded-xl border border-slate-200 hover:bg-slate-200 transition-colors">
-                                                                        {icon}
-                                                                    </a>
-                                                                );
-                                                            }
-                                                            return null;
-                                                        });
-                                                    }
-                                                    const legacyAssets: { url: string; mime?: string }[] = [];
-                                                    if (sub.pptLink?.startsWith('data:')) legacyAssets.push({ url: sub.pptLink, mime: sub.pptLink.split(';')[0].split(':')[1] });
-                                                    return legacyAssets.map((asset, ai) => (
-                                                        <button key={ai} type="button"
-                                                            onClick={() => setPreviewAsset({ url: asset.url, filename: `Attachment.${(asset.mime || '').split('/')[1] || 'bin'}`, type: 'file' })}
-                                                            className="flex items-center justify-center w-9 h-9 bg-amber-50 text-amber-600 rounded-xl border border-amber-100 hover:bg-amber-100 transition-colors">
-                                                            <FileText size={16} />
-                                                        </button>
-                                                    ));
-                                                })()}
-                                            </div>
-                                        </td>
-                                        <td className="px-10 py-8">
-                                            <div className="flex flex-col gap-1">
-                                                {(() => {
-                                                    const judgeId = resolveAssignedJudgeId(sub);
-                                                    const judge = institutionJudges.find((j: any) => String(j._id) === String(judgeId));
-                                                    if (judge) {
-                                                        return (
-                                                            <span className="px-3 py-1.5 bg-emerald-50 text-emerald-700 rounded-xl text-[10px] font-black uppercase tracking-widest border border-emerald-100">
-                                                                {judge.name}
-                                                            </span>
-                                                        );
-                                                    }
-                                                    if (judgeId) {
-                                                        const fromAssigned = (sub.assigned_judges || []).find((aj: any) => String(aj?.judge_id) === String(judgeId));
-                                                        return (
-                                                            <span className="px-3 py-1.5 bg-emerald-50 text-emerald-700 rounded-xl text-[10px] font-black uppercase tracking-widest border border-emerald-100">
-                                                                {fromAssigned?.name || fromAssigned?.email || 'Assigned'}
-                                                            </span>
-                                                        );
-                                                    }
-                                                    return (
-                                                        <select 
-                                                            value=""
-                                                            onChange={(e) => {
-                                                                if (e.target.value) handleBulkAssign(e.target.value, [sub._id]);
-                                                            }}
-                                                            className="px-4 py-2 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-black uppercase tracking-widest outline-none focus:ring-2 focus:ring-purple-500"
-                                                        >
-                                                            <option value="">No Judge Assigned</option>
-                                                            {(institutionJudges || []).map((j: any) => (
-                                                                <option key={j._id} value={j._id}>{j.name} ({j.assignment_count ?? 0})</option>
-                                                            ))}
-                                                        </select>
-                                                    );
-                                                })()}
-                                            </div>
-                                        </td>
-                                        <td className="px-10 py-8 text-center">
-                                            <div className="flex flex-col items-center">
-                                                <span className="text-2xl font-black text-purple-600">{(sub.totalScore || 0).toFixed(1)}</span>
-                                                <span className="text-[10px] font-black text-slate-400 uppercase">Avg Pts</span>
-                                            </div>
-                                        </td>
-                                        <td className="px-10 py-8 text-right">
-                                            <div className="flex justify-end gap-2">
-                                                <button 
-                                                    onClick={async () => {
-                                                        setEvaluatingSubmission(sub);
-                                                        const initScores: Record<string, number> = {};
-                                                        criteria.forEach((c: any) => { initScores[c.name] = 0; });
-                                                        try {
-                                                            const scoreRes = await fetch(`${API_BASE_URL}/api/judges/scores/${sub._id}`, { headers: { ...authHeaders() } });
-                                                            if (scoreRes.ok) {
-                                                                const scoresData = await scoreRes.json();
-                                                                const allScores = Array.isArray(scoresData) ? scoresData : [];
-                                                                const myScore = allScores.find((s: any) => s.judge_id === user?.user_id)
-                                                                    || allScores[allScores.length - 1];
-                                                                if (myScore) {
-                                                                    const loaded = myScore.scores || myScore.criteria_scores || {};
-                                                                    setEvaluationScores({ ...initScores, ...loaded });
-                                                                    setEvaluationComment(myScore.comments || myScore.feedback || '');
-                                                                } else {
-                                                                    setEvaluationScores(initScores);
-                                                                    setEvaluationComment('');
-                                                                }
-                                                            } else {
-                                                                setEvaluationScores(initScores);
-                                                                setEvaluationComment('');
-                                                            }
-                                                        } catch {
-                                                            setEvaluationScores(initScores);
-                                                            setEvaluationComment('');
-                                                        }
-                                                    }}
-                                                    className="px-6 py-3 bg-white border border-slate-200 rounded-2xl text-[10px] font-black uppercase tracking-widest text-slate-600 hover:bg-purple-600 hover:text-white hover:border-purple-600 transition-all shadow-sm"
-                                                >
-                                                    Evaluate
-                                                </button>
-                                            </div>
-                                        </td>
+                {(() => {
+                    const activeSubmissionStage = stages.find(s => String(s.id) === String(selectedProjectStageId));
+                    const submissionTextFields = activeSubmissionStage ? getStageTextFields(activeSubmissionStage) : [];
+                    const submissionTableColSpan =
+                        (isBulkMode ? 1 : 0) + 1 + submissionTextFields.length + 4;
+
+                    const renderSubmissionFieldValue = (sub: any, key: string) => {
+                        const stageData = sub._sourceType === 'stage' ? sub.data : null;
+                        let value = stageData && typeof stageData === 'object' ? stageData[key] : '';
+                        if (!value) value = '-';
+                        if (typeof value === 'string' && (value.startsWith('data:') || value.startsWith('http://') || value.startsWith('https://') || value.startsWith('/api/'))) {
+                            return 'View in Files';
+                        }
+                        return value;
+                    };
+
+                    return (
+                        <div className="bg-white rounded-[3rem] border border-slate-100 overflow-hidden shadow-2xl shadow-slate-200/20">
+                            <table className="w-full text-left table-fixed border-collapse">
+                                <thead>
+                                    <tr className="bg-slate-50/50">
+                                        {isBulkMode && <th className="px-10 py-6 w-10"></th>}
+                                        <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Team Detail</th>
+                                        {submissionTextFields.map((f: any) => (
+                                            <th key={f.id || f.key} className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">
+                                                {f.label || f.key}
+                                            </th>
+                                        ))}
+                                        <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Files</th>
+                                        <th className="px-2 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Judge</th>
+                                        <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Score</th>
+                                        <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
                                     </tr>
-                                ))
-                            ) : (
-                                <tr>
-                                    <td colSpan={7} className="px-10 py-32 text-center text-slate-300 font-black text-[10px] uppercase tracking-[0.4em]">No submissions match your filters</td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
-                </div>
+                                </thead>
+                                <tbody className="divide-y divide-slate-50">
+                                    {filtered.length > 0 ? (
+                                        filtered.map((sub) => {
+                                            const rowStage = stages.find(s => String(s.id) === String(sub.stage_id || selectedProjectStageId));
+                                            const rowAssets = collectSubmissionAssets(sub, rowStage || activeSubmissionStage);
+                                            const displayTeamName = sub.teamName || sub.team_name || 'Unnamed Team';
+                                            const displayLead = sub.teamLead || sub.team_lead || '';
 
-            {/* Bundle Categorization Section */}
-            <div className="mt-16 space-y-8">
-                <div className="flex flex-wrap items-end justify-between gap-6 px-6">
-                    <div className="space-y-4 flex-1">
-                        <p className="text-[11px] text-slate-500 font-medium max-w-3xl">
-                            Percentages are calculated from judge rubric scores: each submission&apos;s total judge marks ÷ your rubric&apos;s max points
-                            {bundleData?.thresholds?.max_possible_score ? ` (${bundleData.thresholds.max_possible_score} pts)` : ''} × 100.
-                            Shortlisted teams can be notified and appear on the leaderboard.
-                        </p>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Shortlist ≥ (%)</label>
-                                <div className="flex items-center gap-3">
-                                    <input type="range" min={0} max={100} value={threshold ?? 80} onChange={(e) => { setThreshold(Number(e.target.value)); setThresholdsDirty(true); }} className="flex-1" disabled={threshold == null} />
-                                    <span className="text-sm font-black text-[#6C3BFF] w-10">{threshold ?? '—'}%</span>
-                                </div>
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Waitlist ≥ (%)</label>
-                                <div className="flex items-center gap-3">
-                                    <input type="range" min={0} max={100} value={waitlistThreshold ?? 65} onChange={(e) => { setWaitlistThreshold(Number(e.target.value)); setThresholdsDirty(true); }} className="flex-1" disabled={waitlistThreshold == null} />
-                                    <span className="text-sm font-black text-amber-600 w-10">{waitlistThreshold ?? '—'}%</span>
-                                </div>
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Reject &lt; (%)</label>
-                                <div className="flex items-center gap-3">
-                                    <input type="range" min={0} max={100} value={rejectThreshold ?? 65} onChange={(e) => { setRejectThreshold(Number(e.target.value)); setThresholdsDirty(true); }} className="flex-1" disabled={rejectThreshold == null} />
-                                    <span className="text-sm font-black text-rose-600 w-10">{rejectThreshold ?? '—'}%</span>
-                                </div>
-                            </div>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-4">
-                            <button type="button" onClick={saveEvaluationThresholds} disabled={threshold == null}
-                                className="px-4 py-2 rounded-xl bg-slate-900 text-white text-[10px] font-black uppercase tracking-wider hover:bg-slate-800 disabled:opacity-40">
-                                Save thresholds
-                            </button>
-                            {event?.evaluation_thresholds ? (
-                                <p className="text-[10px] text-slate-400 font-medium">
-                                    Saved: Shortlist ≥ {event.evaluation_thresholds.shortlist_min}% · Waitlist ≥ {event.evaluation_thresholds.waitlist_min}% · Reject &lt; {event.evaluation_thresholds.reject_below}%
-                                </p>
-                            ) : null}
-                            {thresholdsDirty ? (
-                                <p className="text-[10px] text-amber-600 font-bold uppercase tracking-wider">Previewing unsaved thresholds</p>
-                            ) : null}
-                        </div>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-3">
-                        <select
-                            value={bundleNotifyFilter}
-                            onChange={(e) => setBundleNotifyFilter(e.target.value as typeof bundleNotifyFilter)}
-                            className="px-4 py-2 rounded-xl border border-slate-200 text-[10px] font-black uppercase tracking-wider text-slate-600"
-                        >
-                            <option value="ALL">All candidates</option>
-                            <option value="APPROVED_UNNOTIFIED">Approved & Unnotified</option>
-                            <option value="APPROVED_NOTIFIED">Approved & Notified</option>
-                        </select>
-                        <button
-                            type="button"
-                            onClick={() => setIsBulkNotifyModalOpen(true)}
-                            disabled={!bundleItems.some((i: any) => ['shortlisted', 'approved', 'accepted'].some((s) => String(i.status || '').toLowerCase().includes(s)))}
-                            className="px-4 py-2 rounded-xl bg-[#6C3BFF] text-white text-[10px] font-black uppercase tracking-wider hover:bg-purple-700 disabled:opacity-40 flex items-center gap-2"
-                        >
-                            <Send size={12} /> Notify selected
-                        </button>
-                    </div>
-                </div>
-                <div className="flex items-center gap-10 border-b border-slate-100 px-6">
-                    {BUNDLE_TABS.map((tab) => (
-                        <button
-                            key={tab}
-                            onClick={() => setBundleTab(tab)}
-                            className={`text-[10px] font-black uppercase tracking-[0.2em] pb-5 relative transition-all ${bundleTab === tab ? 'text-[#6C3BFF]' : 'text-slate-400 hover:text-slate-600'}`}
-                        >
-                            {BUNDLE_TAB_LABEL[tab]} ({bundleData?.summary?.[tab] || 0})
-                            {bundleTab === tab && (
-                                <motion.div layoutId="bundleSubTab" className="absolute bottom-0 left-0 right-0 h-1 bg-[#6C3BFF] rounded-full shadow-[0_2px_10px_rgba(108,59,255,0.4)]" />
-                            )}
-                        </button>
-                    ))}
-                    {getCurrentStageInfo().is_final_stage && (
-                        <button
-                            onClick={handleIssueCertificates}
-                            disabled={issuingCertificates || !(bundleData?.approved?.length || bundleData?.shortlisted?.length)}
-                            className="ml-auto mb-5 px-4 py-2 rounded-2xl border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-[10px] font-black uppercase tracking-[0.2em]"
-                            title={`Final stage: ${getCurrentStageInfo().stage_name || 'last submission stage'}. Issues winner/runner-up + participation certificates.`}
-                        >
-                            {issuingCertificates ? 'Issuing Certificates...' : `Issue Certificates (${getCurrentStageInfo().stage_name})`}
-                        </button>
-                    )}
-                </div>
-
-                <div className="bg-white rounded-[3rem] border border-slate-100 overflow-hidden shadow-2xl shadow-slate-200/20">
-                    <table className="w-full text-left">
-                        <thead>
-                            <tr className="bg-slate-50/50">
-                                <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Candidate Identity</th>
-                                <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Judge Status</th>
-                                <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Score Aggregate</th>
-                                <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Action</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-50">
-                            {bundleItems.length > 0 ? (
-                                bundleItems.map((item: any, idx: number) => (
-                                    <motion.tr
-                                        key={item.team_id || item.user_id || idx}
-                                        initial={{ opacity: 0, y: 10 }}
-                                        animate={{ opacity: 1, y: 0 }}
-                                        transition={{ delay: idx * 0.03 }}
-                                        className="hover:bg-slate-50/30 transition-colors group"
-                                    >
-                                        <td className="px-10 py-8">
-                                            <div className="flex flex-col">
-                                                <span className="font-black text-slate-900 text-lg tracking-tight group-hover:text-[#6C3BFF] transition-colors">
-                                                    {item.team_name}
-                                                </span>
-                                                <div className="mt-2 flex flex-wrap items-center gap-2">
-                                                    <span className="px-2.5 py-1 rounded-full border border-slate-200 bg-slate-50 text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">
-                                                        {getBundleSourceLabel(item)}
-                                                    </span>
-                                                    <span className="px-2.5 py-1 rounded-full border border-purple-100 bg-purple-50 text-[9px] font-black uppercase tracking-[0.2em] text-purple-600">
-                                                        {getBundleStatusLabel(item.status || 'Pending')}
-                                                    </span>
-                                                    {item.notified_at && (
-                                                        <span className="px-2.5 py-1 rounded-full border border-emerald-100 bg-emerald-50 text-[9px] font-black uppercase tracking-[0.2em] text-emerald-600">
-                                                            Notified
-                                                        </span>
+                                            return (
+                                                <tr key={sub._id} className="hover:bg-slate-50/30 transition-colors group">
+                                                    {isBulkMode && (
+                                                        <td className="px-10 py-8">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={selectedSubmissions.includes(sub._id)}
+                                                                onChange={(e) => {
+                                                                    if (e.target.checked) setSelectedSubmissions([...selectedSubmissions, sub._id]);
+                                                                    else setSelectedSubmissions(selectedSubmissions.filter(id => id !== sub._id));
+                                                                }}
+                                                                className="w-5 h-5 rounded border-2 border-slate-200 text-purple-600 focus:ring-purple-500"
+                                                            />
+                                                        </td>
                                                     )}
-                                                </div>
-                                            </div>
-                                        </td>
-                                        <td className="px-10 py-8">
-                                            <div className="flex flex-col gap-2">
-                                                {item.total_judges > 0 || item.score > 0 ? (
-                                                    <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-[10px] font-black uppercase tracking-wider w-fit ${item.judges_completed >= item.total_judges ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-purple-50 text-purple-600 border-purple-100'}`}>
-                                                        <CheckCircle2 size={12} />
-                                                        {item.judges_completed}/{item.total_judges} Judges Verified
-                                                    </div>
-                                                ) : null}
-                                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.18em]">
-                                                    {getBundleActionHint(item)}
-                                                </p>
-                                                <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.18em]">
-                                                    {Array.isArray(item.member_emails) && item.member_emails.length > 0
-                                                        ? `Mail will go to ${item.member_emails.length} recipient${item.member_emails.length === 1 ? '' : 's'}`
-                                                        : 'No recipients resolved yet'}
-                                                </p>
-                                            </div>
-                                        </td>
-                                        <td className="px-10 py-8 text-center">
-                                            <span className={`text-base font-black ${item.score > 0 ? 'text-emerald-600' : 'text-slate-900'}`}>
-                                                {item.score ? item.score.toFixed(1) : '0.0'}
-                                            </span>
-                                        </td>
-                                        <td className="px-10 py-8 text-right">
-                                            <div className="flex gap-2 justify-end">
-                                                {(() => {
-                                                    const status = (item.status || '').toLowerCase();
-                                                    if (status === 'approved' || status === 'accepted') {
-                                                        return <div className="px-4 py-2 text-emerald-600 text-[10px] font-black uppercase tracking-widest bg-emerald-50 rounded-xl border border-emerald-100">Approved</div>;
-                                                    }
-                                                    if (status === 'rejected') {
-                                                        return <div className="px-4 py-2 text-rose-600 text-[10px] font-black uppercase tracking-widest bg-rose-50 rounded-xl border border-rose-100">Rejected</div>;
-                                                    }
-                                                    return (
-                                                        <>
-                                                            {status !== 'shortlisted' ? (
-                                                                <button
-                                                                    onClick={() => handleUpdateStatus(item.team_id || item.submission_id, 'Shortlisted', item)}
-                                                                    className="p-3 text-blue-600 bg-blue-50 hover:bg-blue-600 hover:text-white rounded-xl transition-all shadow-sm text-xs font-bold"
-                                                                    title={Array.isArray(item.member_emails) && item.member_emails.length > 0 ? `Shortlist and mail ${item.member_emails.length} recipient${item.member_emails.length === 1 ? '' : 's'}` : 'Shortlist for the next review round'}
-                                                                >
-                                                                    Shortlist
-                                                                </button>
+                                                    <td className="px-10 py-8">
+                                                        <div className="flex flex-col">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleOpenSubmissionTeam(sub)}
+                                                                className="font-black text-slate-900 text-lg tracking-tight text-left hover:text-[#6C3BFF] transition-colors"
+                                                            >
+                                                                {displayTeamName}
+                                                            </button>
+                                                            {displayLead ? (
+                                                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
+                                                                    Lead: {displayLead}
+                                                                </span>
                                                             ) : null}
+                                                            {sub.domain && (
+                                                                <span className="text-[9px] font-black text-purple-600 uppercase tracking-[0.2em] mt-2">{sub.domain}</span>
+                                                            )}
+
+                                                        </div>
+                                                    </td>
+                                                    {submissionTextFields.map((f: any) => {
+                                                        const key = f.id || f.key;
+                                                        return (
+                                                            <td key={key} className="px-10 py-8 max-w-[200px] whitespace-pre-wrap break-words">
+                                                                <p className="text-sm font-bold text-slate-800 line-clamp-3">
+                                                                    {renderSubmissionFieldValue(sub, key)}
+                                                                </p>
+                                                            </td>
+                                                        );
+                                                    })}
+                                                    <td className="px-10 py-8">
+                                                        {renderSubmissionAssetButtons(rowAssets)}
+                                                    </td>
+                                                    <td className="px-2 py-8">
+                                                        <div className="flex items-center justify-center">
+                                                            {(() => {
+                                                                const judge = (institutionJudges || []).find((j: any) => String(j._id) === String(sub.assignedJudgeId));
+                                                                return judge ? (
+                                                                    <span className="text-xs font-bold text-slate-700 truncate">{judge.name}</span>
+                                                                ) : (
+                                                                    <span className="text-[10px] font-bold text-slate-300 italic">Unassigned</span>
+                                                                );
+                                                            })()}
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-10 py-8 text-center">
+                                                        <div className="flex flex-col items-center whitespace-nowrap">
+                                                            <span className="text-xl font-black text-purple-600">{(sub.totalScore || 0).toFixed(1)}</span>
+                                                            <span className="text-[9px] font-black text-slate-400 uppercase">Avg Pts</span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-10 py-8 text-right">
+                                                        <div className="flex justify-end gap-2">
                                                             <button
-                                                                onClick={() => handleUpdateStatus(item.team_id || item.submission_id, 'Accepted', item)}
-                                                                className="p-3 text-emerald-600 bg-emerald-50 hover:bg-emerald-600 hover:text-white rounded-xl transition-all shadow-sm text-xs font-bold"
-                                                                title={Array.isArray(item.member_emails) && item.member_emails.length > 0 ? `Approve and notify ${item.member_emails.length} recipient${item.member_emails.length === 1 ? '' : 's'}` : 'Accept / approve this entry'}
+                                                                type="button"
+                                                                onClick={async () => {
+                                                                    setEvaluatingSubmission(sub);
+                                                                    try {
+                                                                        const scoreRes = await fetch(`${API_BASE_URL}/api/judges/scores/${sub._id}`, { headers: { ...authHeaders() } });
+                                                                        if (scoreRes.ok) {
+                                                                            const scoresData = await scoreRes.json();
+                                                                            const myScore = Array.isArray(scoresData) ? scoresData.find((s: any) => s.judge_id === user?.user_id) : null;
+                                                                            if (myScore) {
+                                                                                setEvaluationScores(myScore.scores || {});
+                                                                                setEvaluationComment(myScore.comments || myScore.feedback || '');
+                                                                            } else {
+                                                                                setEvaluationScores({});
+                                                                                setEvaluationComment('');
+                                                                            }
+                                                                        } else {
+                                                                            setEvaluationScores({});
+                                                                            setEvaluationComment('');
+                                                                        }
+                                                                    } catch {
+                                                                        setEvaluationScores({});
+                                                                        setEvaluationComment('');
+                                                                    }
+                                                                }}
+                                                                className="px-6 py-3 bg-white border border-slate-200 rounded-2xl text-[10px] font-black uppercase tracking-widest text-slate-600 hover:bg-purple-600 hover:text-white hover:border-purple-600 transition-all shadow-sm"
                                                             >
-                                                                Approve
+                                                                Evaluate
                                                             </button>
-                                                            <button
-                                                                onClick={() => handleUpdateStatus(item.team_id || item.submission_id, 'Rejected', item)}
-                                                                className="p-3 text-rose-600 bg-rose-50 hover:bg-rose-600 hover:text-white rounded-xl transition-all shadow-sm text-xs font-bold"
-                                                                title="Reject / remove from consideration"
-                                                            >
-                                                                Reject
-                                                            </button>
-                                                        </>
-                                                    );
-                                                })()}
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })
+                                    ) : (
+                                        <tr>
+                                            <td colSpan={submissionTableColSpan} className="px-10 py-32 text-center text-slate-300 font-black text-[10px] uppercase tracking-[0.4em]">No submissions match your filters</td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    );
+                })()}
+
+                {/* Bundle Categorization Section */}
+                {(() => {
+                    const rawItems = getCurrentBundleItems();
+                    const filteredBundleItems = rawItems.filter((item: any) => {
+                        if (notifyFilter === 'notified') return !!item.notified_at;
+                        if (notifyFilter === 'unnotified') return !item.notified_at;
+                        return true;
+                    }).filter((item: any) => {
+                        if (!searchQuery.trim()) return true;
+                        return (item.team_name || '').toLowerCase().includes(searchQuery.toLowerCase());
+                    });
+
+                    return (
+                        <div className="mt-16 space-y-8 animate-in fade-in duration-300">
+                            {/* Score Thresholds Configuration Card */}
+                            <div className="mx-4 p-8 bg-gradient-to-r from-slate-900 to-slate-800 rounded-[2.5rem] text-white shadow-2xl relative overflow-hidden border border-white/5">
+                                <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-8">
+                                    <div className="space-y-2">
+                                        <h4 className="text-xl font-black tracking-tight flex items-center gap-2">
+                                            <Settings className="text-[#9875FF] animate-spin-slow" size={22} />
+                                            Score Thresholds & Auto-Classification
+                                        </h4>
+                                        <p className="text-slate-400 font-bold text-xs max-w-xl leading-relaxed">
+                                            Set score boundary percentages. Submissions will automatically be classified into Shortlisted, Waitlisted, or Rejected based on their average judge scores.
+                                        </p>
+                                    </div>
+                                    
+                                    <div className="flex flex-wrap items-end gap-6">
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Shortlist Min %</label>
+                                            <div className="relative">
+                                                <input
+                                                    type="number"
+                                                    min={0} max={100}
+                                                    value={shortlistThreshold}
+                                                    onChange={(e) => setShortlistThreshold(Number(e.target.value) || 0)}
+                                                    className="w-28 px-4 py-3 bg-slate-800/80 border border-slate-700/60 rounded-xl font-bold text-white outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 transition-all text-center text-sm"
+                                                />
+                                                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 font-bold text-xs">%</span>
                                             </div>
-                                        </td>
-                                    </motion.tr>
-                                ))
-                            ) : (
-                                <tr>
-                                    <td colSpan={4} className="px-10 py-24 text-center">
-                                        <div className="flex flex-col items-center opacity-20">
-                                            <Filter size={64} className="mb-6" />
-                                            <p className="text-slate-400 font-black text-sm uppercase tracking-widest">No {BUNDLE_TAB_LABEL[bundleTab]?.toLowerCase() || ''} candidates</p>
                                         </div>
-                                    </td>
-                                </tr>
+
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Waitlist Min %</label>
+                                            <div className="relative">
+                                                <input
+                                                    type="number"
+                                                    min={0} max={100}
+                                                    value={waitlistThreshold}
+                                                    onChange={(e) => setWaitlistThreshold(Number(e.target.value) || 0)}
+                                                    className="w-28 px-4 py-3 bg-slate-800/80 border border-slate-700/60 rounded-xl font-bold text-white outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 transition-all text-center text-sm"
+                                                />
+                                                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 font-bold text-xs">%</span>
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Reject Below %</label>
+                                            <div className="relative">
+                                                <input
+                                                    type="number"
+                                                    min={0} max={100}
+                                                    value={rejectThreshold}
+                                                    onChange={(e) => setRejectThreshold(Number(e.target.value) || 0)}
+                                                    className="w-28 px-4 py-3 bg-slate-800/80 border border-slate-700/60 rounded-xl font-bold text-white outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 transition-all text-center text-sm"
+                                                />
+                                                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 font-bold text-xs">%</span>
+                                            </div>
+                                        </div>
+
+                                        <button
+                                            type="button"
+                                            onClick={handleSaveThresholds}
+                                            disabled={savingThresholds}
+                                            className="px-6 py-3.5 bg-gradient-to-r from-[#6C3BFF] to-[#8c5eff] hover:from-[#572ee0] hover:to-[#794be6] text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-lg shadow-purple-900/30 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 h-[46px]"
+                                        >
+                                            {savingThresholds ? (
+                                                <>
+                                                    <Loader2 size={14} className="animate-spin" />
+                                                    Applying...
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Save size={14} />
+                                                    Apply
+                                                </>
+                                            )}
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="absolute -left-10 -bottom-10 w-40 h-40 bg-purple-500/10 rounded-full blur-[60px] pointer-events-none"></div>
+                            </div>
+
+                            <div className="flex items-center gap-10 border-b border-slate-100 px-6 mt-8">
+                                {BUNDLE_TABS.map((tab) => (
+                                    <button
+                                        key={tab}
+                                        onClick={() => setBundleTab(tab)}
+                                        className={`text-[10px] font-black uppercase tracking-[0.2em] pb-5 relative transition-all ${bundleTab === tab ? 'text-[#6C3BFF]' : 'text-slate-400 hover:text-slate-600'}`}
+                                    >
+                                        {BUNDLE_TAB_LABEL[tab]} ({tab === 'shortlisted' ? ((bundleData?.summary?.shortlisted || 0) + (bundleData?.summary?.approved || 0)) : (bundleData?.summary?.[tab] || 0)})
+                                        {bundleTab === tab && (
+                                            <motion.div layoutId="bundleSubTab" className="absolute bottom-0 left-0 right-0 h-1 bg-[#6C3BFF] rounded-full shadow-[0_2px_10px_rgba(108,59,255,0.4)]" />
+                                        )}
+                                    </button>
+                                ))}
+                                {getCurrentStageInfo().is_final_stage && ((bundleData?.shortlisted?.length || 0) + (bundleData?.approved?.length || 0)) > 0 && (
+                                    <button
+                                        onClick={handleIssueCertificates}
+                                        disabled={issuingCertificates}
+                                        className="ml-auto mb-5 px-4 py-2 rounded-2xl border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-[10px] font-black uppercase tracking-[0.2em]"
+                                    >
+                                        {issuingCertificates ? 'Issuing Certificates...' : 'Issue Certificates'}
+                                    </button>
+                                )}
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-4 px-6">
+                                <div className="relative">
+                                    <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                                    <input
+                                        type="text"
+                                        placeholder="Search teams..."
+                                        value={searchQuery}
+                                        onChange={(e) => setSearchQuery(e.target.value)}
+                                        className="pl-14 pr-8 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 outline-none focus:bg-white focus:ring-4 focus:ring-purple-50 transition-all w-72"
+                                    />
+                                </div>
+                                <select
+                                    value={notifyFilter}
+                                    onChange={(e) => setNotifyFilter(e.target.value)}
+                                    className="px-5 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-[10px] font-black uppercase tracking-widest text-slate-600 outline-none focus:ring-4 focus:ring-purple-50 transition-all"
+                                >
+                                    <option value="all">All</option>
+                                    <option value="notified">Notified</option>
+                                    <option value="unnotified">Unnotified</option>
+                                </select>
+                            </div>
+
+                            <div className="bg-white rounded-[3rem] border border-slate-100 overflow-hidden shadow-2xl shadow-slate-200/20">
+                                <table className="w-full text-left" style={{ tableLayout: 'fixed' }}>
+                                    <thead>
+                                        <tr className="bg-slate-50/50">
+                                            {bundleTab === 'shortlisted' && (
+                                                <th className="px-6 py-6 w-14">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={selectedBundleItems.length > 0 && selectedBundleItems.length === (filteredBundleItems || []).length}
+                                                        onChange={() => {
+                                                            const items = filteredBundleItems || [];
+                                                            if (selectedBundleItems.length === items.length) {
+                                                                setSelectedBundleItems([]);
+                                                            } else {
+                                                                setSelectedBundleItems(items.map((i: any) => i.team_id || i.submission_id));
+                                                            }
+                                                        }}
+                                                        className="w-5 h-5 rounded border-2 border-slate-200 text-purple-600 focus:ring-purple-500"
+                                                    />
+                                                </th>
+                                            )}
+                                            <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Team Name</th>
+                                            <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Judge Status</th>
+                                            <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Score Aggregate</th>
+                                            <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Recommendation</th>
+                                            <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-50">
+                                        {filteredBundleItems.length > 0 ? (
+                                            filteredBundleItems.map((item: any, idx: number) => (
+                                                <motion.tr
+                                                    key={item.team_id || item.user_id || item.submission_id || idx}
+                                                    initial={{ opacity: 0, y: 10 }}
+                                                    animate={{ opacity: 1, y: 0 }}
+                                                    transition={{ delay: idx * 0.03 }}
+                                                    className="hover:bg-slate-50/30 transition-colors group"
+                                                >
+                                                    {bundleTab === 'shortlisted' && (
+                                                        <td className="px-6 py-8">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={selectedBundleItems.includes(item.team_id || item.submission_id)}
+                                                                onChange={() => {
+                                                                    const id = item.team_id || item.submission_id;
+                                                                    setSelectedBundleItems(prev =>
+                                                                        prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+                                                                    );
+                                                                }}
+                                                                className="w-5 h-5 rounded border-2 border-slate-200 text-purple-600 focus:ring-purple-500"
+                                                            />
+                                                        </td>
+                                                    )}
+                                                    <td className="px-10 py-8">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleOpenSubmissionTeam(item)}
+                                                            className="font-black text-slate-900 text-lg tracking-tight text-left hover:text-[#6C3BFF] transition-colors"
+                                                        >
+                                                            {item.team_name}
+                                                        </button>
+                                                        {item.notified_at && (
+                                                            <span className="ml-2 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-100 text-[8px] font-black uppercase tracking-wider">Notified</span>
+                                                        )}
+                                                    </td>
+                                                    <td className="px-10 py-8">
+                                                        <div className="flex flex-col gap-1.5">
+                                                            {Array.isArray(item.judges) && item.judges.length > 0 ? item.judges.map((j: any, ji: number) => (
+                                                                <div key={ji} className="relative group/judge">
+                                                                    <div className="flex items-center gap-2 cursor-pointer" title={j.email || ''}>
+                                                                        <span className={`w-2 h-2 rounded-full ${j.verified ? 'bg-emerald-500' : 'bg-amber-400'}`} />
+                                                                        <span className="text-[11px] font-bold text-slate-700 group-hover/judge:text-[#6C3BFF] transition-colors">
+                                                                            {j.name || 'Judge'}
+                                                                        </span>
+                                                                        {j.verified ? (
+                                                                            <span className="text-[9px] font-black text-emerald-600 uppercase tracking-wider">Verified</span>
+                                                                        ) : (
+                                                                            <span className="text-[9px] font-black text-amber-600 uppercase tracking-wider">Pending</span>
+                                                                        )}
+                                                                    </div>
+                                                                    {j.email && (
+                                                                        <div className="absolute left-0 top-full mt-1 px-2 py-1 bg-slate-800 text-white text-[10px] rounded-lg opacity-0 group-hover/judge:opacity-100 transition-opacity whitespace-nowrap z-10 pointer-events-none">
+                                                                            {j.email}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            )) : (
+                                                                <span className="text-[10px] font-bold text-slate-300 italic">No judges assigned</span>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-10 py-8 text-center">
+                                                        <span className={`text-base font-black ${item.score > 0 ? 'text-emerald-600' : 'text-slate-900'}`}>
+                                                            {item.score ? item.score.toFixed(1) : '0.0'}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-10 py-8 max-w-[200px] text-center">
+                                                        {item.recommendation ? (
+                                                            <button
+                                                                onClick={() => setPreviewRecommendation({ title: item.team_name || item.display_name, text: item.recommendation })}
+                                                                className="text-[11px] font-bold text-slate-600 hover:text-purple-600 underline decoration-dashed underline-offset-4 text-left w-full line-clamp-2"
+                                                                title="Click to view full recommendation"
+                                                            >
+                                                                {item.recommendation}
+                                                            </button>
+                                                        ) : null}
+                                                    </td>
+                                                    <td className="px-10 py-8 text-right whitespace-nowrap">
+                                                        <div className="flex gap-1.5 justify-end">
+                                                            {(() => {
+                                                                const status = (item.status || '').toLowerCase();
+                                                                if (status === 'shortlisted' || status === 'approved' || status === 'accepted') {
+                                                                    return <div className="px-3 py-2 text-blue-600 text-[10px] font-black uppercase tracking-widest bg-blue-50 rounded-xl border border-blue-100">Shortlisted</div>;
+                                                                }
+                                                                if (status === 'waitlisted') {
+                                                                    return <div className="px-3 py-2 text-amber-600 text-[10px] font-black uppercase tracking-widest bg-amber-50 rounded-xl border border-amber-100">Waitlisted</div>;
+                                                                }
+                                                                if (status === 'rejected') {
+                                                                    return <div className="px-3 py-2 text-rose-600 text-[10px] font-black uppercase tracking-widest bg-rose-50 rounded-xl border border-rose-100">Rejected</div>;
+                                                                }
+                                                                return (
+                                                                    <>
+                                                                        <button
+                                                                            disabled={submittingStatus !== null}
+                                                                            onClick={() => {
+                                                                                handleUpdateStatus(item.team_id || item.submission_id, 'Shortlisted', item);
+                                                                                setBundleTab('shortlisted');
+                                                                            }}
+                                                                            className="px-2.5 py-2 text-blue-600 bg-blue-50 hover:bg-blue-600 hover:text-white rounded-xl transition-all shadow-sm text-[10px] font-bold whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
+                                                                        >
+                                                                            Shortlist
+                                                                        </button>
+                                                                        <button
+                                                                            disabled={submittingStatus !== null}
+                                                                            onClick={() => {
+                                                                                handleUpdateStatus(item.team_id || item.submission_id, 'Waitlisted', item);
+                                                                                setBundleTab('waitlisted');
+                                                                            }}
+                                                                            className="px-2.5 py-2 text-amber-600 bg-amber-50 hover:bg-amber-600 hover:text-white rounded-xl transition-all shadow-sm text-[10px] font-bold whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
+                                                                        >
+                                                                            Waitlist
+                                                                        </button>
+                                                                        <button
+                                                                            disabled={submittingStatus !== null}
+                                                                            onClick={() => {
+                                                                                handleUpdateStatus(item.team_id || item.submission_id, 'Rejected', item);
+                                                                                setBundleTab('rejected');
+                                                                            }}
+                                                                            className="px-2.5 py-2 text-rose-600 bg-rose-50 hover:bg-rose-600 hover:text-white rounded-xl transition-all shadow-sm text-[10px] font-bold whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
+                                                                        >
+                                                                            Reject
+                                                                        </button>
+                                                                    </>
+                                                                );
+                                                            })()}
+                                                        </div>
+                                                    </td>
+                                                </motion.tr>
+                                            ))
+                                        ) : (
+                                            <tr>
+                                                <td colSpan={bundleTab === 'shortlisted' ? 6 : 5} className="px-10 py-24 text-center">
+                                                    <div className="flex flex-col items-center opacity-20">
+                                                        <Filter size={64} className="mb-6" />
+                                                        <p className="text-slate-400 font-black text-sm uppercase tracking-widest">No {BUNDLE_TAB_LABEL[bundleTab]?.toLowerCase() || ''} teams</p>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                            {bundleTab === 'shortlisted' && selectedBundleItems.length > 0 && (
+                                <div className="flex items-center justify-between px-4 py-4 bg-purple-50 border border-purple-100 rounded-2xl mt-4">
+                                    <span className="text-xs font-bold text-purple-700">{selectedBundleItems.length} team(s) selected</span>
+                                    <button
+                                        onClick={() => {
+                                            const currentBundle = getCurrentBundleItems();
+                                            const selectedItems = currentBundle.filter((i: any) => selectedBundleItems.includes(i.team_id || i.submission_id));
+                                            const stageInfo = getCurrentStageInfo();
+                                            const nextStageName = stageInfo.next_stage_name;
+                                            if (!nextStageName) {
+                                                alert('No next stage available for this event. Define stages first.');
+                                                return;
+                                            }
+                                            setBulkNotifyNextStage(nextStageName);
+                                            setBulkNotifySubject(`Congratulations! You've been shortlisted for ${event?.title || ''}`);
+                                            setBulkNotifyMessage(DEFAULT_SHORTLIST_MESSAGE.replace(/{next_stage}/g, nextStageName));
+                                            setBulkNotifySelectedTemplate('default');
+                                            setBulkNotifyMinScore('');
+                                            setSelectedBundleForEmail(selectedItems);
+                                            fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/email-templates`, {
+                                                headers: { ...authHeaders() }
+                                            }).then(r => r.ok && r.json()).then(d => {
+                                                if (d) setBulkNotifyTemplates(d.filter((t: any) => ['stage_advancement', 'announcement'].includes(t.type)));
+                                            }).catch(() => {});
+                                            setIsBulkNotifyModalOpen(true);
+                                        }}
+                                        className="px-6 py-3 bg-purple-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-purple-700 transition-all shadow-lg shadow-purple-900/20"
+                                    >
+                                        Send Email to Selected
+                                    </button>
+                                </div>
                             )}
-                        </tbody>
-                    </table>
-                </div>
+                        </div>
+                    );
+                })()}
             </div>
-        </div>
         );
     };
 
@@ -2916,11 +3208,10 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                         </td>
                                         <td className="px-10 py-6 text-sm font-bold text-slate-500">{p.team}</td>
                                         <td className="px-10 py-6">
-                                            <span className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest ${
-                                                p.role === 'Team Lead' ? 'bg-purple-50 text-purple-600 border border-purple-100' :
-                                                p.role === 'Solo' ? 'bg-amber-50 text-amber-600 border border-amber-100' :
-                                                'bg-blue-50 text-blue-600 border border-blue-100'
-                                            }`}>{p.role}</span>
+                                            <span className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest ${p.role === 'Team Lead' ? 'bg-purple-50 text-purple-600 border border-purple-100' :
+                                                    p.role === 'Solo' ? 'bg-amber-50 text-amber-600 border border-amber-100' :
+                                                        'bg-blue-50 text-blue-600 border border-blue-100'
+                                                }`}>{p.role}</span>
                                         </td>
                                     </tr>
                                 ))
@@ -3062,20 +3353,8 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                 {(j.name || '?').charAt(0).toUpperCase()}
                             </div>
                         </div>
-                        <div className="flex items-center gap-3 mb-2">
-                            <h4 className="text-2xl font-black text-slate-900 tracking-tight">{j.name}</h4>
-                            <span className={`px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest ${
-                                j.status === 'ACCEPTED' ? 'bg-emerald-100 text-emerald-700' :
-                                j.status === 'DECLINED' ? 'bg-red-100 text-red-700' :
-                                'bg-amber-100 text-amber-700'
-                            }`}>
-                                {j.status === 'ACCEPTED' ? 'Accepted' : j.status === 'DECLINED' ? 'Declined' : 'Invited'}
-                            </span>
-                        </div>
-                        <p className="text-sm font-bold text-purple-600 uppercase tracking-widest mb-2">{j.expertise || j.domain || 'Evaluator'}</p>
-                        <p className="text-[10px] font-black text-amber-700 bg-amber-50 inline-block px-3 py-1 rounded-lg mb-8">
-                            {j.assignment_count ?? 0} submission{(j.assignment_count ?? 0) !== 1 ? 's' : ''} assigned
-                        </p>
+                        <h4 className="text-2xl font-black text-slate-900 mb-2 tracking-tight">{j.name}</h4>
+                        <p className="text-sm font-bold text-purple-600 uppercase tracking-widest mb-8">{j.domain}</p>
 
                         <div className="pt-8 border-t border-slate-50 flex items-center justify-between mt-auto">
                             <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
@@ -3150,11 +3429,11 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                         </p>
                     </div>
                     <div className="flex flex-wrap items-center gap-4 shrink-0 relative z-10">
-                        <button 
+                        <button
                             onClick={handleExportRegistrationsCsv}
                             className="px-8 py-4 bg-white/5 hover:bg-white/10 border border-white/10 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-3 group"
                         >
-                            <Download size={18} className="text-[#6C3BFF] group-hover:scale-110 transition-transform" /> 
+                            <Download size={18} className="text-[#6C3BFF] group-hover:scale-110 transition-transform" />
                             Export CSV Roster
                         </button>
                     </div>
@@ -3235,15 +3514,15 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                     <div className="flex flex-wrap items-center gap-4 w-full md:w-auto">
                         <div className="relative w-full md:w-80">
                             <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                            <input 
-                                type="text" 
-                                placeholder="Search by name, email, or college..." 
+                            <input
+                                type="text"
+                                placeholder="Search by name, email, or college..."
                                 value={regSearch}
                                 onChange={(e) => setRegSearch(e.target.value)}
                                 className="w-full pl-14 pr-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 outline-none focus:bg-white focus:ring-4 focus:ring-purple-50 transition-all"
                             />
                         </div>
-                        <select 
+                        <select
                             value={regStatusFilter}
                             onChange={(e) => {
                                 setRegStatusFilter(e.target.value);
@@ -3258,21 +3537,21 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                             <option value="WAITLISTED">Waitlisted</option>
                             <option value="REJECTED">Rejected</option>
                         </select>
-                                <button
-                                    onClick={() => handleNotifyApproved(selectedRegistrations.length > 0 ? selectedRegistrations : undefined)}
-                                    disabled={notifyingApproved || (((regStats as any).pending_notification === 0) && selectedRegistrations.length === 0)}
-                                    className="px-5 py-4 bg-purple-50 hover:bg-[#6C3BFF] hover:text-white border border-purple-100 text-[#6C3BFF] rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 disabled:opacity-40"
-                                >
-                                    {notifyingApproved ? (
-                                        <Loader2 size={14} className="animate-spin" />
-                                    ) : (
-                                        <Send size={14} />
-                                    )}
-                                    {selectedRegistrations.length > 0 
-                                        ? `Notify ${selectedRegistrations.length} Selected` 
-                                        : `Notify ${(regStats as any).pending_notification ?? regStats.approved} Approved`
-                                    }
-                                </button>
+                        <button
+                            onClick={() => handleNotifyApproved(selectedRegistrations.length > 0 ? selectedRegistrations : undefined)}
+                            disabled={notifyingApproved || (((regStats as any).pending_notification === 0) && selectedRegistrations.length === 0)}
+                            className="px-5 py-4 bg-purple-50 hover:bg-[#6C3BFF] hover:text-white border border-purple-100 text-[#6C3BFF] rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 disabled:opacity-40"
+                        >
+                            {notifyingApproved ? (
+                                <Loader2 size={14} className="animate-spin" />
+                            ) : (
+                                <Send size={14} />
+                            )}
+                            {selectedRegistrations.length > 0
+                                ? `Notify ${selectedRegistrations.length} Selected`
+                                : `Notify ${(regStats as any).pending_notification ?? regStats.approved} Approved`
+                            }
+                        </button>
                     </div>
                 </div>
 
@@ -3286,105 +3565,104 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                     )}
 
                     <div className="overflow-x-auto">
-                            <table className="w-full text-left">
-                                <thead>
-                                    <tr className="bg-slate-50/50 border-b border-slate-100">
-                                        <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest w-6">
-                                            <input type="checkbox" onChange={(e) => {
-                                                if (e.target.checked) {
-                                                    // Select all approved that have not been notified yet in the current view
-                                                    const approvedIds = filteredSolos.filter((p: any) => p.status === 'APPROVED' && !p.notified_at).map((p: any) => p._id);
-                                                    setSelectedRegistrations(approvedIds);
-                                                } else {
-                                                    setSelectedRegistrations([]);
-                                                }
-                                            }} />
-                                        </th>
-                                        {dynamicFields.map((f: any) => (
-                                            <th key={f.id} className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">{f.label}</th>
-                                        ))}
-                                        <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
-                                        <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-100">
-                                    {/* --- TEAM BUNDLES --- */}
-                                    {filteredTeams.length > 0 && filteredTeams.filter((t: any) => t.team_id).map((team: any) => {
-                                        const isTeamExpanded = expandedRegId === team.team_id;
-                                        const isActionBusy = regActionBusy === team.team_id;
-                                        const firstMember = team.members?.[0] || {};
-                                        const firstProf = firstMember.profile_snapshot || {};
-                                        return (
-                                            <React.Fragment key={team.team_id}>
-                                                <tr className="hover:bg-purple-50/40 transition-colors group bg-slate-50/30">
-                                                    <td className="px-8 py-5">
-                                                        <div className="w-4 h-4 shrink-0" />
+                        <table className="w-full text-left">
+                            <thead>
+                                <tr className="bg-slate-50/50 border-b border-slate-100">
+                                    <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest w-6">
+                                        <input type="checkbox" onChange={(e) => {
+                                            if (e.target.checked) {
+                                                // Select all approved that have not been notified yet in the current view
+                                                const approvedIds = filteredSolos.filter((p: any) => p.status === 'APPROVED' && !p.notified_at).map((p: any) => p._id);
+                                                setSelectedRegistrations(approvedIds);
+                                            } else {
+                                                setSelectedRegistrations([]);
+                                            }
+                                        }} />
+                                    </th>
+                                    {dynamicFields.map((f: any) => (
+                                        <th key={f.id} className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">{f.label}</th>
+                                    ))}
+                                    <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
+                                    <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {/* --- TEAM BUNDLES --- */}
+                                {filteredTeams.length > 0 && filteredTeams.filter((t: any) => t.team_id).map((team: any) => {
+                                    const isTeamExpanded = expandedRegId === team.team_id;
+                                    const isActionBusy = regActionBusy === team.team_id;
+                                    const firstMember = team.members?.[0] || {};
+                                    const firstProf = firstMember.profile_snapshot || {};
+                                    return (
+                                        <React.Fragment key={team.team_id}>
+                                            <tr className="hover:bg-purple-50/40 transition-colors group bg-slate-50/30">
+                                                <td className="px-8 py-5">
+                                                    <div className="w-4 h-4 shrink-0" />
+                                                </td>
+                                                {dynamicFields.map((f: any, fi: number) => (
+                                                    <td key={f.id} className={`px-8 py-5 ${fi === 0 ? 'cursor-pointer' : ''}`}
+                                                        onClick={fi === 0 ? () => setExpandedRegId(isTeamExpanded ? null : team.team_id) : undefined}
+                                                    >
+                                                        <p className="font-bold text-slate-900 text-sm leading-tight truncate max-w-[200px]">{firstProf[f.id] || firstProf[f.label] || '—'}</p>
                                                     </td>
-                                                    {dynamicFields.map((f: any, fi: number) => (
-                                                        <td key={f.id} className={`px-8 py-5 ${fi === 0 ? 'cursor-pointer' : ''}`}
-                                                            onClick={fi === 0 ? () => setExpandedRegId(isTeamExpanded ? null : team.team_id) : undefined}
-                                                        >
-                                                            <p className="font-bold text-slate-900 text-sm leading-tight truncate max-w-[200px]">{firstProf[f.id] || firstProf[f.label] || '—'}</p>
-                                                        </td>
-                                                    ))}
-                                                    <td className="px-8 py-5">
-                                                        <div className="flex flex-col items-start gap-1.5">
-                                                            <span className={`px-3 py-1 rounded-full border text-[9px] font-black uppercase tracking-widest ${
-                                                                team.status === 'APPROVED' ? 'bg-emerald-50 text-emerald-600 border-emerald-100/50 shadow-sm' :
+                                                ))}
+                                                <td className="px-8 py-5">
+                                                    <div className="flex flex-col items-start gap-1.5">
+                                                        <span className={`px-3 py-1 rounded-full border text-[9px] font-black uppercase tracking-widest ${team.status === 'APPROVED' ? 'bg-emerald-50 text-emerald-600 border-emerald-100/50 shadow-sm' :
                                                                 team.status === 'REJECTED' ? 'bg-red-50 text-red-600 border-red-100/50' :
-                                                                team.status === 'WAITLISTED' ? 'bg-indigo-50 text-indigo-600 border-indigo-100/50' :
-                                                                'bg-amber-50 text-amber-600 border-amber-100/50 animate-pulse'
+                                                                    team.status === 'WAITLISTED' ? 'bg-indigo-50 text-indigo-600 border-indigo-100/50' :
+                                                                        'bg-amber-50 text-amber-600 border-amber-100/50 animate-pulse'
                                                             }`}>
-                                                                {team.status === 'PENDING_APPROVAL' ? 'Pending' : team.status}
+                                                            {team.status === 'PENDING_APPROVAL' ? 'Pending' : team.status}
+                                                        </span>
+                                                        {team.status === 'APPROVED' && team.members && team.members.length > 0 && team.members.every((m: any) => m.notified_at) && (
+                                                            <span className="px-2 py-0.5 bg-purple-50 text-[#6C3BFF] border border-purple-100/50 rounded text-[8px] font-bold uppercase tracking-wider flex items-center gap-1">
+                                                                <span className="w-1 h-1 rounded-full bg-[#6C3BFF]" />
+                                                                Notified
                                                             </span>
-                                                            {team.status === 'APPROVED' && team.members && team.members.length > 0 && team.members.every((m: any) => m.notified_at) && (
-                                                                <span className="px-2 py-0.5 bg-purple-50 text-[#6C3BFF] border border-purple-100/50 rounded text-[8px] font-bold uppercase tracking-wider flex items-center gap-1">
-                                                                    <span className="w-1 h-1 rounded-full bg-[#6C3BFF]" />
-                                                                    Notified
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-8 py-5 text-right">
-                                                        <div className="flex justify-end gap-2 items-center">
-                                                            {team.status !== 'APPROVED' && (
-                                                                <button
-                                                                    onClick={() => handleUpdateTeamStatus(team.team_id, 'APPROVED')}
-                                                                    disabled={isActionBusy}
-                                                                    className="px-4 py-2 bg-emerald-50 text-emerald-600 hover:bg-emerald-600 hover:text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-sm border border-emerald-100"
-                                                                >
-                                                                    {isActionBusy ? <Loader2 size={12} className="animate-spin" /> : 'Approve'}
-                                                                </button>
-                                                            )}
-                                                            {team.status !== 'REJECTED' && (
-                                                                <button
-                                                                    onClick={() => handleUpdateTeamStatus(team.team_id, 'REJECTED')}
-                                                                    disabled={isActionBusy}
-                                                                    className="px-4 py-2 bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-sm border border-rose-100"
-                                                                >
-                                                                    {isActionBusy ? <Loader2 size={12} className="animate-spin" /> : 'Reject'}
-                                                                </button>
-                                                            )}
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                                {/* Expanded Members */}
-                                                {isTeamExpanded && team.members?.map((reg: any, idx: number) => {
-                                                    const isExpanded = expandedRegId === reg._id;
-                                                    const customAnswers = reg.custom_answers || {};
-                                                    const prof = reg.profile_snapshot || {};
-                                                    return (
-                                                        <React.Fragment key={reg._id}>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                                <td className="px-8 py-5 text-right">
+                                                    <div className="flex justify-end gap-2 items-center">
+                                                        {team.status !== 'APPROVED' && (
+                                                            <button
+                                                                onClick={() => handleUpdateTeamStatus(team.team_id, 'APPROVED')}
+                                                                disabled={isActionBusy}
+                                                                className="px-4 py-2 bg-emerald-50 text-emerald-600 hover:bg-emerald-600 hover:text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-sm border border-emerald-100"
+                                                            >
+                                                                {isActionBusy ? <Loader2 size={12} className="animate-spin" /> : 'Approve'}
+                                                            </button>
+                                                        )}
+                                                        {team.status !== 'REJECTED' && (
+                                                            <button
+                                                                onClick={() => handleUpdateTeamStatus(team.team_id, 'REJECTED')}
+                                                                disabled={isActionBusy}
+                                                                className="px-4 py-2 bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-sm border border-rose-100"
+                                                            >
+                                                                {isActionBusy ? <Loader2 size={12} className="animate-spin" /> : 'Reject'}
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                            {/* Expanded Members */}
+                                            {isTeamExpanded && team.members?.map((reg: any, idx: number) => {
+                                                const isExpanded = expandedRegId === reg._id;
+                                                const customAnswers = reg.custom_answers || {};
+                                                const prof = reg.profile_snapshot || {};
+                                                return (
+                                                    <React.Fragment key={reg._id}>
                                                         <tr className="bg-slate-50/10 hover:bg-slate-50 transition-colors group">
                                                             <td className="px-8 py-4 border-l-2 border-purple-200 flex items-center gap-3">
-                                                                <button 
+                                                                <button
                                                                     onClick={() => setExpandedRegId(isExpanded ? null : reg._id)}
                                                                     className="p-1 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-[#6C3BFF] transition-all"
                                                                     title={isExpanded ? "Collapse Details" : "Expand Custom Answers & Profile"}
                                                                 >
-                                                                    <ChevronRight 
-                                                                        size={14} 
-                                                                        className={`transform transition-transform duration-300 ${isExpanded ? 'rotate-90 text-[#6C3BFF]' : ''}`} 
+                                                                    <ChevronRight
+                                                                        size={14}
+                                                                        className={`transform transition-transform duration-300 ${isExpanded ? 'rotate-90 text-[#6C3BFF]' : ''}`}
                                                                     />
                                                                 </button>
                                                                 <span className="text-[9px] font-black text-slate-300"># {idx + 1}</span>
@@ -3478,10 +3756,10 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                                                                             <div key={qIdx} className="space-y-1.5">
                                                                                                 <p className="text-xs font-black text-slate-400 uppercase tracking-wider">{q.label}</p>
                                                                                                 {isFile ? (
-                                                                                                    <a 
-                                                                                                        href={ans} 
-                                                                                                        target="_blank" 
-                                                                                                        rel="noopener noreferrer" 
+                                                                                                    <a
+                                                                                                        href={ans}
+                                                                                                        target="_blank"
+                                                                                                        rel="noopener noreferrer"
                                                                                                         className="inline-flex items-center gap-2 px-4 py-2 bg-slate-50 hover:bg-slate-100 text-[#6C3BFF] border border-slate-100 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-inner transition-all"
                                                                                                     >
                                                                                                         <Download size={14} /> View File Attachment
@@ -3501,10 +3779,10 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                                                                             <div key={qIdx} className="space-y-1.5">
                                                                                                 <p className="text-xs font-black text-slate-400 uppercase tracking-wider">{k}</p>
                                                                                                 {isFile ? (
-                                                                                                    <a 
-                                                                                                        href={v} 
-                                                                                                        target="_blank" 
-                                                                                                        rel="noopener noreferrer" 
+                                                                                                    <a
+                                                                                                        href={v}
+                                                                                                        target="_blank"
+                                                                                                        rel="noopener noreferrer"
                                                                                                         className="inline-flex items-center gap-2 px-4 py-2 bg-slate-50 hover:bg-slate-100 text-[#6C3BFF] border border-slate-100 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-inner transition-all"
                                                                                                     >
                                                                                                         <Download size={14} /> View Attachment
@@ -3528,109 +3806,105 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                                                 </td>
                                                             </tr>
                                                         )}
-                                                        </React.Fragment>
-                                                    );
-                                                })}
-                                            </React.Fragment>
-                                        );
-                                    })}
-                                    
-                                    {/* --- SOLO APPLICANTS --- */}
-                                    {filteredSolos.filter((r: any) => r._id).length > 0 ? (
-                                        filteredSolos.filter((r: any) => r._id).map((reg) => {
-                                            const prof = reg.profile_snapshot || {};
-                                            const customAnswers = reg.custom_answers || {};
-                                            const isExpanded = expandedRegId === reg._id;
-                                            const isActionBusy = regActionBusy === reg._id;
+                                                    </React.Fragment>
+                                                );
+                                            })}
+                                        </React.Fragment>
+                                    );
+                                })}
 
-                                            return (
-                                                <React.Fragment key={reg._id}>
-                                                    <tr className="hover:bg-slate-50/30 transition-colors group">
-                                                        <td className="px-8 py-5">
-                                                            <div className="flex items-center gap-2">
-                                                                <input 
-                                                                    type="checkbox" 
-                                                                    checked={selectedRegistrations.includes(reg._id)} 
-                                                                    onChange={() => toggleRegistrationSelection(reg._id)} 
-                                                                    className="rounded border-slate-300 text-[#6C3BFF] focus:ring-[#6C3BFF]"
-                                                                />
-                                                            </div>
+                                {/* --- SOLO APPLICANTS --- */}
+                                {filteredSolos.filter((r: any) => r._id).length > 0 ? (
+                                    filteredSolos.filter((r: any) => r._id).map((reg) => {
+                                        const prof = reg.profile_snapshot || {};
+                                        const customAnswers = reg.custom_answers || {};
+                                        const isExpanded = expandedRegId === reg._id;
+                                        const isActionBusy = regActionBusy === reg._id;
+
+                                        return (
+                                            <React.Fragment key={reg._id}>
+                                                <tr className="hover:bg-slate-50/30 transition-colors group">
+                                                    <td className="px-8 py-5">
+                                                        <div className="flex items-center gap-2">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={selectedRegistrations.includes(reg._id)}
+                                                                onChange={() => toggleRegistrationSelection(reg._id)}
+                                                                className="rounded border-slate-300 text-[#6C3BFF] focus:ring-[#6C3BFF]"
+                                                            />
+                                                        </div>
+                                                    </td>
+                                                    {dynamicFields.map((f: any, fi: number) => (
+                                                        <td key={f.id} className={`px-8 py-5 ${fi === 0 ? 'cursor-pointer' : ''}`}
+                                                            onClick={fi === 0 ? () => setExpandedRegId(isExpanded ? null : reg._id) : undefined}
+                                                        >
+                                                            <p className="font-bold text-slate-900 text-sm leading-tight truncate max-w-[200px]">{prof[f.id] || prof[f.label] || '—'}</p>
                                                         </td>
-                                                        {dynamicFields.map((f: any, fi: number) => (
-                                                            <td key={f.id} className={`px-8 py-5 ${fi === 0 ? 'cursor-pointer' : ''}`}
-                                                                onClick={fi === 0 ? () => setExpandedRegId(isExpanded ? null : reg._id) : undefined}
-                                                            >
-                                                                <p className="font-bold text-slate-900 text-sm leading-tight truncate max-w-[200px]">{prof[f.id] || prof[f.label] || '—'}</p>
-                                                            </td>
-                                                        ))}
-                                                        <td className="px-8 py-5">
-                                                            <div className="flex flex-col items-start gap-1.5">
-                                                                <span className={`px-3 py-1 rounded-full border text-[9px] font-black uppercase tracking-widest ${
-                                                                    reg.status === 'APPROVED' ? 'bg-emerald-50 text-emerald-600 border-emerald-100/50 shadow-sm' :
+                                                    ))}
+                                                    <td className="px-8 py-5">
+                                                        <div className="flex flex-col items-start gap-1.5">
+                                                            <span className={`px-3 py-1 rounded-full border text-[9px] font-black uppercase tracking-widest ${reg.status === 'APPROVED' ? 'bg-emerald-50 text-emerald-600 border-emerald-100/50 shadow-sm' :
                                                                     reg.status === 'REJECTED' ? 'bg-red-50 text-red-600 border-red-100/50' :
-                                                                    reg.status === 'WAITLISTED' ? 'bg-indigo-50 text-indigo-600 border-indigo-100/50' :
-                                                                    'bg-amber-50 text-amber-600 border-amber-100/50 animate-pulse'
+                                                                        reg.status === 'WAITLISTED' ? 'bg-indigo-50 text-indigo-600 border-indigo-100/50' :
+                                                                            'bg-amber-50 text-amber-600 border-amber-100/50 animate-pulse'
                                                                 }`}>
-                                                                    {reg.status === 'PENDING_APPROVAL' ? 'Pending' : reg.status}
+                                                                {reg.status === 'PENDING_APPROVAL' ? 'Pending' : reg.status}
+                                                            </span>
+                                                            {reg.status === 'APPROVED' && reg.notified_at && (
+                                                                <span className="px-2 py-0.5 bg-purple-50 text-[#6C3BFF] border border-purple-100/50 rounded text-[8px] font-bold uppercase tracking-wider flex items-center gap-1">
+                                                                    <span className="w-1 h-1 rounded-full bg-[#6C3BFF]" />
+                                                                    Notified
                                                                 </span>
-                                                                {reg.status === 'APPROVED' && reg.notified_at && (
-                                                                    <span className="px-2 py-0.5 bg-purple-50 text-[#6C3BFF] border border-purple-100/50 rounded text-[8px] font-bold uppercase tracking-wider flex items-center gap-1">
-                                                                        <span className="w-1 h-1 rounded-full bg-[#6C3BFF]" />
-                                                                        Notified
-                                                                    </span>
-                                                                )}
-                                                            </div>
-                                                        </td>
-                                                        <td className="px-8 py-5 text-right">
-                                                            <div className="flex justify-end gap-1.5 items-center">
-                                                                {prof.resume_url && (
-                                                                    <a href={prof.resume_url} target="_blank" rel="noopener noreferrer" className="p-2 bg-slate-50 text-slate-400 hover:text-[#6C3BFF] rounded-lg border border-slate-100 hover:border-[#6C3BFF]/20 transition-all" title="Resume">
-                                                                        <FileText size={12} />
-                                                                    </a>
-                                                                )}
-                                                                {prof.linkedin_url && (
-                                                                    <a href={prof.linkedin_url} target="_blank" rel="noopener noreferrer" className="p-2 bg-slate-50 text-slate-400 hover:text-[#6C3BFF] rounded-lg border border-slate-100 hover:border-[#6C3BFF]/20 transition-all" title="LinkedIn">
-                                                                        <LinkIcon size={12} />
-                                                                    </a>
-                                                                )}
-                                                                {prof.github_url && (
-                                                                    <a href={prof.github_url} target="_blank" rel="noopener noreferrer" className="p-2 bg-slate-50 text-slate-400 hover:text-slate-900 rounded-lg border border-slate-100 transition-all" title="GitHub">
-                                                                        <Share2 size={12} />
-                                                                    </a>
-                                                                )}
-                                                                <div className="w-px h-6 bg-slate-200 mx-1"></div>
-                                                                <button
-                                                                    disabled={isActionBusy}
-                                                                    onClick={() => handleUpdateRegistrationStatus(reg._id, 'APPROVED')}
-                                                                    className={`px-3 py-1.5 bg-emerald-50 hover:bg-emerald-600 hover:text-white border border-emerald-100 text-emerald-700 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${
-                                                                        reg.status === 'APPROVED' ? 'opacity-30 pointer-events-none' : ''
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-8 py-5 text-right">
+                                                        <div className="flex justify-end gap-1.5 items-center">
+                                                            {prof.resume_url && (
+                                                                <a href={prof.resume_url} target="_blank" rel="noopener noreferrer" className="p-2 bg-slate-50 text-slate-400 hover:text-[#6C3BFF] rounded-lg border border-slate-100 hover:border-[#6C3BFF]/20 transition-all" title="Resume">
+                                                                    <FileText size={12} />
+                                                                </a>
+                                                            )}
+                                                            {prof.linkedin_url && (
+                                                                <a href={prof.linkedin_url} target="_blank" rel="noopener noreferrer" className="p-2 bg-slate-50 text-slate-400 hover:text-[#6C3BFF] rounded-lg border border-slate-100 hover:border-[#6C3BFF]/20 transition-all" title="LinkedIn">
+                                                                    <LinkIcon size={12} />
+                                                                </a>
+                                                            )}
+                                                            {prof.github_url && (
+                                                                <a href={prof.github_url} target="_blank" rel="noopener noreferrer" className="p-2 bg-slate-50 text-slate-400 hover:text-slate-900 rounded-lg border border-slate-100 transition-all" title="GitHub">
+                                                                    <Share2 size={12} />
+                                                                </a>
+                                                            )}
+                                                            <div className="w-px h-6 bg-slate-200 mx-1"></div>
+                                                            <button
+                                                                disabled={isActionBusy}
+                                                                onClick={() => handleUpdateRegistrationStatus(reg._id, 'APPROVED')}
+                                                                className={`px-3 py-1.5 bg-emerald-50 hover:bg-emerald-600 hover:text-white border border-emerald-100 text-emerald-700 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${reg.status === 'APPROVED' ? 'opacity-30 pointer-events-none' : ''
                                                                     }`}
-                                                                >
-                                                                    {isActionBusy && regActionBusy === reg._id ? <Loader2 size={9} className="animate-spin inline mr-1" /> : null}
-                                                                    Approve
-                                                                </button>
-                                                                <button
-                                                                    disabled={isActionBusy}
-                                                                    onClick={() => handleUpdateRegistrationStatus(reg._id, 'REJECTED')}
-                                                                    className={`px-3 py-1.5 bg-red-50 hover:bg-red-600 hover:text-white border border-red-100 text-red-700 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${
-                                                                        reg.status === 'REJECTED' ? 'opacity-30 pointer-events-none' : ''
+                                                            >
+                                                                {isActionBusy && regActionBusy === reg._id ? <Loader2 size={9} className="animate-spin inline mr-1" /> : null}
+                                                                Approve
+                                                            </button>
+                                                            <button
+                                                                disabled={isActionBusy}
+                                                                onClick={() => handleUpdateRegistrationStatus(reg._id, 'REJECTED')}
+                                                                className={`px-3 py-1.5 bg-red-50 hover:bg-red-600 hover:text-white border border-red-100 text-red-700 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${reg.status === 'REJECTED' ? 'opacity-30 pointer-events-none' : ''
                                                                     }`}
-                                                                >
-                                                                    Reject
-                                                                </button>
-                                                                <button
-                                                                    disabled={isActionBusy}
-                                                                    onClick={() => handleUpdateRegistrationStatus(reg._id, 'WAITLISTED')}
-                                                                    className={`px-3 py-1.5 bg-indigo-50 hover:bg-indigo-600 hover:text-white border border-indigo-100 text-indigo-700 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${
-                                                                        reg.status === 'WAITLISTED' ? 'opacity-30 pointer-events-none' : ''
+                                                            >
+                                                                Reject
+                                                            </button>
+                                                            <button
+                                                                disabled={isActionBusy}
+                                                                onClick={() => handleUpdateRegistrationStatus(reg._id, 'WAITLISTED')}
+                                                                className={`px-3 py-1.5 bg-indigo-50 hover:bg-indigo-600 hover:text-white border border-indigo-100 text-indigo-700 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${reg.status === 'WAITLISTED' ? 'opacity-30 pointer-events-none' : ''
                                                                     }`}
-                                                                >
-                                                                    Waitlist
-                                                                </button>
-                                                            </div>
-                                                        </td>
-                                                    </tr>
-                                                
+                                                            >
+                                                                Waitlist
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+
                                                 {/* 5. Custom Answers & Detailed Profile Expansion Panel */}
                                                 {isExpanded && (
                                                     <tr>
@@ -3695,10 +3969,10 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                                                                     <div key={qIdx} className="space-y-1.5">
                                                                                         <p className="text-xs font-black text-slate-400 uppercase tracking-wider">{q.label}</p>
                                                                                         {isFile ? (
-                                                                                            <a 
-                                                                                                href={ans} 
-                                                                                                target="_blank" 
-                                                                                                rel="noopener noreferrer" 
+                                                                                            <a
+                                                                                                href={ans}
+                                                                                                target="_blank"
+                                                                                                rel="noopener noreferrer"
                                                                                                 className="inline-flex items-center gap-2 px-4 py-2 bg-slate-50 hover:bg-slate-100 text-[#6C3BFF] border border-slate-100 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-inner transition-all"
                                                                                             >
                                                                                                 <Download size={14} /> View File Attachment
@@ -3718,10 +3992,10 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                                                                     <div key={qIdx} className="space-y-1.5">
                                                                                         <p className="text-xs font-black text-slate-400 uppercase tracking-wider">{k}</p>
                                                                                         {isFile ? (
-                                                                                            <a 
-                                                                                                href={v} 
-                                                                                                target="_blank" 
-                                                                                                rel="noopener noreferrer" 
+                                                                                            <a
+                                                                                                href={v}
+                                                                                                target="_blank"
+                                                                                                rel="noopener noreferrer"
                                                                                                 className="inline-flex items-center gap-2 px-4 py-2 bg-slate-50 hover:bg-slate-100 text-[#6C3BFF] border border-slate-100 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-inner transition-all"
                                                                                             >
                                                                                                 <Download size={14} /> View Attachment
@@ -3759,7 +4033,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                         </td>
                                     </tr>
                                 ) : null}
-                                    </tbody>
+                            </tbody>
                         </table>
                     </div>
 
@@ -3820,16 +4094,18 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                             {[
                                 { label: 'Registered Teams', val: hackathonSubmissions.length > 0 ? hackathonSubmissions.length : (teams?.length || 0), icon: Layers, color: 'text-[#6C3BFF]', bg: 'bg-purple-50', tab: 'teams' },
-                                { label: 'Total Participants', val: hackathonSubmissions.length > 0 ? hackathonSubmissions.reduce((acc: number, sub: any) => {
-                                    // Count unique members across all submissions
-                                    const members = sub.teamMembers || sub.team_members || [];
-                                    return acc + (members.length > 0 ? members.length : 1);
-                                }, 0) : (participants?.length || 0), icon: Users, color: 'text-emerald-500', bg: 'bg-emerald-50', tab: 'participants' },
+                                {
+                                    label: 'Total Participants', val: hackathonSubmissions.length > 0 ? hackathonSubmissions.reduce((acc: number, sub: any) => {
+                                        // Count unique members across all submissions
+                                        const members = sub.teamMembers || sub.team_members || [];
+                                        return acc + (members.length > 0 ? members.length : 1);
+                                    }, 0) : (participants?.length || 0), icon: Users, color: 'text-emerald-500', bg: 'bg-emerald-50', tab: 'participants'
+                                },
                                 { label: 'Submissions', val: Math.max(hackathonSubmissions?.length || 0, submissions?.length || 0), icon: FileText, color: 'text-emerald-600', bg: 'bg-emerald-50', tab: 'submissions' },
                                 { label: 'Judges Active', val: institutionJudges.length, icon: Gavel, color: 'text-amber-600', bg: 'bg-amber-50', tab: 'judges' }
                             ].map((m, i) => (
-                                <button 
-                                    key={i} 
+                                <button
+                                    key={i}
                                     onClick={() => setActiveTab(m.tab)}
                                     className="p-8 bg-white border border-slate-100 rounded-[2.5rem] shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all text-left group"
                                 >
@@ -3857,10 +4133,10 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                                 const startDate = new Date(start);
                                                 const endDate = new Date(endStr);
                                                 endDate.setUTCHours(23, 59, 59, 999);
-                                                
+
                                                 if (now < startDate) return '0%';
                                                 if (now > endDate) return '100%';
-                                                
+
                                                 const total = endDate.getTime() - startDate.getTime();
                                                 const elapsed = now.getTime() - startDate.getTime();
                                                 return `${Math.min(100, Math.max(0, (elapsed / total) * 100))}%`;
@@ -3870,8 +4146,8 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                                 <div key={i} className="flex items-center gap-6 group">
                                                     <div className="relative">
                                                         <div className="w-2 h-14 bg-white/10 rounded-full relative overflow-hidden">
-                                                            <div 
-                                                                className="absolute top-0 left-0 right-0 bg-[#6C3BFF] transition-all duration-1000" 
+                                                            <div
+                                                                className="absolute top-0 left-0 right-0 bg-[#6C3BFF] transition-all duration-1000"
                                                                 style={{ height: calculateProgressHeight(s.start_date, s.end_date) }}
                                                             ></div>
                                                         </div>
@@ -3881,13 +4157,12 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                                         <div className="flex items-center gap-2 mt-1">
                                                             <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{s.type}</span>
                                                             <span className="text-slate-700">•</span>
-                                                            <span className={`text-[9px] font-bold uppercase tracking-wider ${
-                                                                new Date() > new Date(new Date(s.end_date).setUTCHours(23, 59, 59, 999)) 
-                                                                    ? 'text-slate-500' 
+                                                            <span className={`text-[9px] font-bold uppercase tracking-wider ${new Date() > new Date(new Date(s.end_date).setUTCHours(23, 59, 59, 999))
+                                                                    ? 'text-slate-500'
                                                                     : new Date() < new Date(s.start_date)
                                                                         ? 'text-blue-400'
                                                                         : 'text-emerald-400'
-                                                            }`}>
+                                                                }`}>
                                                                 {new Date() > new Date(new Date(s.end_date).setUTCHours(23, 59, 59, 999)) ? 'Completed' : new Date() < new Date(s.start_date) ? 'Upcoming' : 'Active'}
                                                             </span>
                                                         </div>
@@ -3927,7 +4202,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                         <p className="text-[10px] font-medium opacity-70 mt-0.5">Automated synchronization will trigger in 3 seconds, or click Sync Now.</p>
                                     </div>
                                 </div>
-                                <button 
+                                <button
                                     onClick={handleSaveEvent}
                                     className="px-6 py-3 bg-amber-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-amber-700 transition-colors shadow-lg shadow-amber-900/10"
                                 >
@@ -3942,45 +4217,11 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                     </div>
                 );
             case 'teams':
-                const filteredTeams = teams.filter(t => {
-                    const q = searchQuery.toLowerCase();
-                    const leader = t.members?.find(m => m.is_leader || String(m.user_id) === String(t.team_leader_id));
-                    const matchesSearch = !q ||
-                        (t.team_name || '').toLowerCase().includes(q) ||
-                        (t.leader_name || leader?.name || '').toLowerCase().includes(q) ||
-                        (leader?.email || '').toLowerCase().includes(q);
-                    const matchesStatus = teamStatusFilter === 'All' ||
-                        String(t.status || '').toLowerCase() === teamStatusFilter.toLowerCase();
-                    return matchesSearch && matchesStatus;
-                });
-                const handleNotifyTeamsByStatus = async () => {
-                    if (!eventId || teamStatusFilter === 'All') {
-                        alert('Choose a status filter (e.g. Approved) before sending notifications.');
-                        return;
-                    }
-                    if (!confirm(`Email all ${teamStatusFilter} teams?`)) return;
-                    setNotifyingTeams(true);
-                    try {
-                        const res = await fetch(`${API_BASE_URL}/api/v1/institution/events/${eventId}/teams/notify-by-status`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json', ...authHeaders() },
-                            body: JSON.stringify({
-                                status: teamStatusFilter.toLowerCase(),
-                                message: `Your team status is "${teamStatusFilter}". Please continue in the event portal.`,
-                            }),
-                        });
-                        const data = await res.json();
-                        if (res.ok) {
-                            alert(`Notifications queued for ${data.sent || 0} member(s) across ${data.teams || 0} team(s).`);
-                        } else {
-                            alert(data.detail || 'Failed to send team notifications.');
-                        }
-                    } catch {
-                        alert('Network error while notifying teams.');
-                    } finally {
-                        setNotifyingTeams(false);
-                    }
-                };
+                const filteredTeams = teams.filter(t =>
+                    !searchQuery ||
+                    (t.team_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+                    (t.leader_name || '').toLowerCase().includes(searchQuery.toLowerCase())
+                );
                 return (
                     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
                         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
@@ -3988,28 +4229,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                 <h3 className="text-2xl font-black text-slate-900 tracking-tight">Team Management</h3>
                                 <p className="text-slate-500 text-sm font-medium mt-1">Direct control over participant grouping and identities for this event.</p>
                             </div>
-                            <div className="flex flex-wrap items-center gap-3">
-                                <select
-                                    value={teamStatusFilter}
-                                    onChange={(e) => setTeamStatusFilter(e.target.value)}
-                                    className="px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900"
-                                >
-                                    <option value="All">All statuses</option>
-                                    <option value="approved">Approved</option>
-                                    <option value="shortlisted">Shortlisted</option>
-                                    <option value="waitlisted">Waitlisted</option>
-                                    <option value="rejected">Rejected</option>
-                                    <option value="pending">Pending</option>
-                                </select>
-                                <button
-                                    type="button"
-                                    onClick={handleNotifyTeamsByStatus}
-                                    disabled={notifyingTeams || teamStatusFilter === 'All'}
-                                    className="px-4 py-3 bg-[#6C3BFF] text-white rounded-2xl text-xs font-black uppercase tracking-wider disabled:opacity-50"
-                                >
-                                    {notifyingTeams ? 'Sending…' : 'Email filtered teams'}
-                                </button>
-                                <div className="relative group">
+                            <div className="relative group">
                                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors" size={18} />
                                 <input
                                     type="text"
@@ -4018,7 +4238,6 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                     onChange={(e) => setSearchQuery(e.target.value)}
                                     className="pl-12 pr-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all w-full md:w-80 font-medium"
                                 />
-                            </div>
                             </div>
                         </div>
 
@@ -4039,7 +4258,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                             const leader = team.members?.find(m => m.is_leader || String(m.user_id) === String(team.team_leader_id));
                                             return (
                                                 <tr key={team._id} className="hover:bg-gray-50 transition-colors">
-                                                    <td 
+                                                    <td
                                                         className="px-6 py-4 whitespace-nowrap font-semibold text-gray-900 cursor-pointer hover:text-indigo-600"
                                                         onClick={() => setSelectedTeam(team)}
                                                     >
@@ -4053,12 +4272,11 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                                         {team.members?.length || 0}
                                                     </td>
                                                     <td className="px-6 py-4 whitespace-nowrap">
-                                                         <span className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                                                            team.status === 'approved' ? 'bg-green-100 text-green-800' :
-                                                            team.status === 'rejected' ? 'bg-red-100 text-red-800' :
-                                                            team.status === 'waitlisted' ? 'bg-yellow-100 text-yellow-800' :
-                                                            'bg-gray-100 text-gray-800'
-                                                        }`}>
+                                                        <span className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${team.status === 'approved' ? 'bg-green-100 text-green-800' :
+                                                                team.status === 'rejected' ? 'bg-red-100 text-red-800' :
+                                                                    team.status === 'waitlisted' ? 'bg-yellow-100 text-yellow-800' :
+                                                                        'bg-gray-100 text-gray-800'
+                                                            }`}>
                                                             {team.status || 'N/A'}
                                                         </span>
                                                     </td>
@@ -4092,125 +4310,6 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                 </table>
                             </div>
                         </div>
-
-                        {selectedTeam && (
-                            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex justify-center items-center p-4 animate-in fade-in duration-300" onClick={() => setSelectedTeam(null)}>
-                                <div className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col animate-in zoom-in-95 duration-300" onClick={(e) => e.stopPropagation()}>
-                                    <div className="p-8 border-b bg-slate-50/50">
-                                        <div className="flex justify-between items-start">
-                                            <div>
-                                                <div className="flex items-center gap-3 mb-2">
-                                                    <h2 className="text-2xl font-black text-slate-900 tracking-tight">{selectedTeam.team_name || 'Unnamed Team'}</h2>
-                                                    <span className={`px-3 py-1 inline-flex text-[10px] font-black uppercase tracking-widest rounded-full border ${
-                                                        selectedTeam.status === 'approved' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
-                                                        selectedTeam.status === 'rejected' ? 'bg-red-50 text-red-700 border-red-100' :
-                                                        'bg-slate-50 text-slate-600 border-slate-100'
-                                                    }`}>
-                                                        {selectedTeam.status || 'Pending'}
-                                                    </span>
-                                                </div>
-                                                <div className="flex items-center gap-4 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                                                    <span className="flex items-center gap-1.5"><Users size={14} /> {selectedTeam.members?.length || 0} Members</span>
-                                                    <span>•</span>
-                                                    <span>Team ID: {selectedTeam._id}</span>
-                                                </div>
-                                            </div>
-                                            <button 
-                                                onClick={() => setSelectedTeam(null)}
-                                                className="w-10 h-10 flex items-center justify-center rounded-xl bg-white border border-slate-100 text-slate-400 hover:text-slate-900 hover:border-slate-200 transition-all shadow-sm"
-                                            >
-                                                <X size={20} />
-                                            </button>
-                                        </div>
-                                    </div>
-                                    
-                                    <div className="flex-1 overflow-y-auto p-8">
-                                        <div className="space-y-8">
-                                            <div>
-                                                <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4">Team Roster</h3>
-                                                <div className="bg-slate-50 rounded-[1.5rem] border border-slate-100 overflow-hidden">
-                                                    <table className="min-w-full divide-y divide-slate-200">
-                                                        <thead className="bg-slate-100/50">
-                                                            <tr>
-                                                                <th className="px-6 py-4 text-left text-[10px] font-black text-slate-500 uppercase tracking-widest">Member</th>
-                                                                <th className="px-6 py-4 text-left text-[10px] font-black text-slate-500 uppercase tracking-widest">Role</th>
-                                                                <th className="px-6 py-4 text-center text-[10px] font-black text-slate-500 uppercase tracking-widest">Registration</th>
-                                                                <th className="px-6 py-4 text-center text-[10px] font-black text-slate-500 uppercase tracking-widest">Submission</th>
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody className="divide-y divide-slate-100 bg-white">
-                                                            {selectedTeam.members?.map((member: any, index: number) => (
-                                                                <tr key={index} className="hover:bg-slate-50/50 transition-colors">
-                                                                    <td className="px-6 py-4">
-                                                                        <div className="font-bold text-slate-900 text-sm">{member.name || 'N/A'}</div>
-                                                                        <div className="text-xs text-slate-400 font-medium">{member.email || 'N/A'}</div>
-                                                                    </td>
-                                                                    <td className="px-6 py-4">
-                                                                        {member.is_leader ? (
-                                                                            <span className="px-2.5 py-1 bg-indigo-50 text-indigo-600 rounded-lg text-[10px] font-black uppercase tracking-wider border border-indigo-100">
-                                                                                Leader
-                                                                            </span>
-                                                                        ) : (
-                                                                            <span className="text-[11px] font-bold text-slate-400">Member</span>
-                                                                        )}
-                                                                    </td>
-                                                                    <td className="px-6 py-4 text-center">
-                                                                        <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider ${
-                                                                            member.registration_status === 'shortlisted' ? 'bg-emerald-50 text-emerald-600' :
-                                                                            member.registration_status === 'rejected' ? 'bg-red-50 text-red-600' :
-                                                                            'bg-slate-50 text-slate-500'
-                                                                        }`}>
-                                                                            {member.registration_status || 'Registered'}
-                                                                        </span>
-                                                                    </td>
-                                                                    <td className="px-6 py-4 text-center">
-                                                                        <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider ${
-                                                                            member.submission_status === 'submitted' ? 'bg-indigo-50 text-indigo-600' :
-                                                                            'bg-slate-50 text-slate-500'
-                                                                        }`}>
-                                                                            {member.submission_status === 'submitted' ? 'Submitted' : 'Pending'}
-                                                                        </span>
-                                                                    </td>
-                                                                </tr>
-                                                            ))}
-                                                        </tbody>
-                                                    </table>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    
-                                    <div className="p-8 border-t bg-slate-50/50 flex justify-end gap-3">
-                                        <button 
-                                            onClick={() => setSelectedTeam(null)}
-                                            className="px-8 py-3 bg-white border border-slate-200 text-slate-600 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 hover:text-slate-900 transition-all shadow-sm"
-                                        >
-                                            Close
-                                        </button>
-                                        <div className="flex gap-2">
-                                            <button
-                                                onClick={() => {
-                                                    handleUpdateTeamStatus(selectedTeam._id, 'approved');
-                                                    setSelectedTeam(null);
-                                                }}
-                                                className="px-6 py-3 bg-emerald-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-900/20"
-                                            >
-                                                Approve Team
-                                            </button>
-                                            <button
-                                                onClick={() => {
-                                                    handleUpdateTeamStatus(selectedTeam._id, 'rejected');
-                                                    setSelectedTeam(null);
-                                                }}
-                                                className="px-6 py-3 bg-red-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-red-700 transition-all shadow-lg shadow-red-900/20"
-                                            >
-                                                Reject Team
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
                     </div>
                 );
             case 'basic':
@@ -4299,7 +4398,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                             <div className="space-y-4 pt-8 border-t border-slate-50">
                                 <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Strategic Overview</span>
                                 <div className="p-8 bg-slate-50 border border-slate-100 rounded-[2rem]">
-                                    <div 
+                                    <div
                                         className="opportunity-rich-text text-slate-600 font-medium leading-relaxed [&_p]:mb-4 [&_p:last-child]:mb-0 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:mb-2 [&_strong]:font-bold [&_em]:italic [&_h2]:text-lg [&_h2]:font-bold [&_h2]:mt-6 [&_h2]:mb-3 [&_a]:text-purple-600 [&_a]:underline outline-none"
                                         dangerouslySetInnerHTML={{ __html: sanitizePresentationHtml(event.description || '') }}
                                     />
@@ -4323,11 +4422,10 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                 </p>
                                 {portalReviewNotice ? (
                                     <div
-                                        className={`mt-4 px-4 py-3 rounded-2xl text-sm font-bold flex items-center gap-2 ${
-                                            portalReviewNotice.kind === 'success'
+                                        className={`mt-4 px-4 py-3 rounded-2xl text-sm font-bold flex items-center gap-2 ${portalReviewNotice.kind === 'success'
                                                 ? 'bg-emerald-50 text-emerald-800 border border-emerald-100'
                                                 : 'bg-red-50 text-red-800 border border-red-100'
-                                        }`}
+                                            }`}
                                     >
                                         {portalReviewNotice.kind === 'success' ? <CheckCircle2 size={18} /> : <AlertCircle size={18} />}
                                         {portalReviewNotice.text}
@@ -4362,60 +4460,60 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                                 const rowBusyId = String(p._id ?? p.user_id ?? p.opportunity_application_id ?? '');
                                                 const rowBusy = reviewingParticipantId !== null && reviewingParticipantId === rowBusyId;
                                                 return (
-                                                <tr key={p._id} className="hover:bg-slate-50/50">
-                                                    <td className="px-10 py-6 font-black text-slate-900">{p.full_name || p.name || p.registration_data?.full_name || p.profile_snapshot?.full_name || '—'}</td>
-                                                    <td className="px-10 py-6 text-sm font-bold text-slate-600">{p.email || p.registration_data?.email || p.profile_snapshot?.email || '—'}</td>
-                                                    {/* Dynamically render custom fields values */}
-                                                    {(event.registration_settings?.profile_fields_config ? Object.keys(event.registration_settings.profile_fields_config) : []).slice(0, 3).map((field) => (
-                                                        <td key={field} className="px-10 py-6 text-sm font-bold text-slate-600">{registrationData[field] || p.registration_data?.[field] || p.profile_snapshot?.[field] || '—'}</td>
-                                                    ))}
-                                                    <td className="px-10 py-6 text-xs font-bold text-slate-500 uppercase tracking-wider">
-                                                        {src === 'opportunity_application' || src === 'opportunity_portal' || src === 'opportunity_portal_backfill'
-                                                            ? 'Portal apply'
-                                                            : 'Participant'}
-                                                    </td>
-                                                    <td className="px-10 py-6">
-                                                        <span className="px-3 py-1 rounded-lg text-[10px] font-black uppercase bg-slate-100 text-slate-700">
-                                                            {portalRegistrationStatusLabel(p.status)}
-                                                        </span>
-                                                    </td>
-                                                    <td className="px-10 py-6 text-sm font-bold text-slate-500">
-                                                        {p.registered_at ? new Date(p.registered_at).toLocaleString() : '—'}
-                                                    </td>
-                                                    <td className="px-10 py-6 text-right">
-                                                        {canReview ? (
-                                                            <div className="flex flex-wrap justify-end gap-2 items-center">
-                                                                <button
-                                                                    type="button"
-                                                                    disabled={rowBusy}
-                                                                    onClick={() => handleReviewPortalApplication(p, 'shortlisted')}
-                                                                    className="px-3 py-1.5 rounded-xl text-[9px] font-black uppercase bg-emerald-50 text-emerald-700 border border-emerald-100 hover:bg-emerald-600 hover:text-white disabled:opacity-50 disabled:pointer-events-none inline-flex items-center gap-1.5"
-                                                                >
-                                                                    {rowBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
-                                                                    Shortlist
-                                                                </button>
-                                                                <button
-                                                                    type="button"
-                                                                    disabled={rowBusy}
-                                                                    onClick={() => handleReviewPortalApplication(p, 'rejected')}
-                                                                    className="px-3 py-1.5 rounded-xl text-[9px] font-black uppercase bg-red-50 text-red-700 border border-red-100 hover:bg-red-600 hover:text-white disabled:opacity-50 disabled:pointer-events-none"
-                                                                >
-                                                                    Reject
-                                                                </button>
-                                                                <button
-                                                                    type="button"
-                                                                    disabled={rowBusy}
-                                                                    onClick={() => handleReviewPortalApplication(p, 'pending')}
-                                                                    className="px-3 py-1.5 rounded-xl text-[9px] font-black uppercase bg-slate-100 text-slate-600 border border-slate-200 disabled:opacity-50 disabled:pointer-events-none"
-                                                                >
-                                                                    Pending
-                                                                </button>
-                                                            </div>
-                                                        ) : (
-                                                            <span className="text-[10px] font-bold text-slate-300">—</span>
-                                                        )}
-                                                    </td>
-                                                </tr>
+                                                    <tr key={p._id} className="hover:bg-slate-50/50">
+                                                        <td className="px-10 py-6 font-black text-slate-900">{p.full_name || p.name || p.registration_data?.full_name || p.profile_snapshot?.full_name || '—'}</td>
+                                                        <td className="px-10 py-6 text-sm font-bold text-slate-600">{p.email || p.registration_data?.email || p.profile_snapshot?.email || '—'}</td>
+                                                        {/* Dynamically render custom fields values */}
+                                                        {(event.registration_settings?.profile_fields_config ? Object.keys(event.registration_settings.profile_fields_config) : []).slice(0, 3).map((field) => (
+                                                            <td key={field} className="px-10 py-6 text-sm font-bold text-slate-600">{registrationData[field] || p.registration_data?.[field] || p.profile_snapshot?.[field] || '—'}</td>
+                                                        ))}
+                                                        <td className="px-10 py-6 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                                                            {src === 'opportunity_application' || src === 'opportunity_portal' || src === 'opportunity_portal_backfill'
+                                                                ? 'Portal apply'
+                                                                : 'Participant'}
+                                                        </td>
+                                                        <td className="px-10 py-6">
+                                                            <span className="px-3 py-1 rounded-lg text-[10px] font-black uppercase bg-slate-100 text-slate-700">
+                                                                {portalRegistrationStatusLabel(p.status)}
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-10 py-6 text-sm font-bold text-slate-500">
+                                                            {p.registered_at ? new Date(p.registered_at).toLocaleString() : '—'}
+                                                        </td>
+                                                        <td className="px-10 py-6 text-right">
+                                                            {canReview ? (
+                                                                <div className="flex flex-wrap justify-end gap-2 items-center">
+                                                                    <button
+                                                                        type="button"
+                                                                        disabled={rowBusy}
+                                                                        onClick={() => handleReviewPortalApplication(p, 'shortlisted')}
+                                                                        className="px-3 py-1.5 rounded-xl text-[9px] font-black uppercase bg-emerald-50 text-emerald-700 border border-emerald-100 hover:bg-emerald-600 hover:text-white disabled:opacity-50 disabled:pointer-events-none inline-flex items-center gap-1.5"
+                                                                    >
+                                                                        {rowBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                                                                        Shortlist
+                                                                    </button>
+                                                                    <button
+                                                                        type="button"
+                                                                        disabled={rowBusy}
+                                                                        onClick={() => handleReviewPortalApplication(p, 'rejected')}
+                                                                        className="px-3 py-1.5 rounded-xl text-[9px] font-black uppercase bg-red-50 text-red-700 border border-red-100 hover:bg-red-600 hover:text-white disabled:opacity-50 disabled:pointer-events-none"
+                                                                    >
+                                                                        Reject
+                                                                    </button>
+                                                                    <button
+                                                                        type="button"
+                                                                        disabled={rowBusy}
+                                                                        onClick={() => handleReviewPortalApplication(p, 'pending')}
+                                                                        className="px-3 py-1.5 rounded-xl text-[9px] font-black uppercase bg-slate-100 text-slate-600 border border-slate-200 disabled:opacity-50 disabled:pointer-events-none"
+                                                                    >
+                                                                        Pending
+                                                                    </button>
+                                                                </div>
+                                                            ) : (
+                                                                <span className="text-[10px] font-bold text-slate-300">—</span>
+                                                            )}
+                                                        </td>
+                                                    </tr>
                                                 );
                                             })
                                         ) : (
@@ -4648,7 +4746,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                                     value={prize.title || prize.rank || ''}
                                                     onChange={(e) => {
                                                         const updated = [...prizeDistribution];
-                                                        updated[i] = {...updated[i], title: e.target.value, rank: e.target.value};
+                                                        updated[i] = { ...updated[i], title: e.target.value, rank: e.target.value };
                                                         setPrizeDistribution(updated);
                                                     }}
                                                     placeholder="e.g. Winner"
@@ -4662,7 +4760,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                                     value={prize.amount || ''}
                                                     onChange={(e) => {
                                                         const updated = [...prizeDistribution];
-                                                        updated[i] = {...updated[i], amount: e.target.value};
+                                                        updated[i] = { ...updated[i], amount: e.target.value };
                                                         setPrizeDistribution(updated);
                                                     }}
                                                     placeholder="e.g. ₹10,000"
@@ -4675,7 +4773,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                                     value={prize.type || ''}
                                                     onChange={(e) => {
                                                         const updated = [...prizeDistribution];
-                                                        updated[i] = {...updated[i], type: e.target.value};
+                                                        updated[i] = { ...updated[i], type: e.target.value };
                                                         setPrizeDistribution(updated);
                                                     }}
                                                     className="w-full px-3 py-2.5 bg-slate-50 border border-slate-100 rounded-lg outline-none transition-all text-slate-900 text-[12px] font-medium appearance-none"
@@ -4700,7 +4798,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                                     value={prize.badge_text || prize.badge || ''}
                                                     onChange={(e) => {
                                                         const updated = [...prizeDistribution];
-                                                        updated[i] = {...updated[i], badge_text: e.target.value};
+                                                        updated[i] = { ...updated[i], badge_text: e.target.value };
                                                         setPrizeDistribution(updated);
                                                     }}
                                                     placeholder="e.g. Certificate"
@@ -4719,7 +4817,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                                             const val = e.target.value;
                                                             if (val && val.startsWith('data:')) return;
                                                             const updated = [...prizeDistribution];
-                                                            updated[i] = {...updated[i], icon_url: val};
+                                                            updated[i] = { ...updated[i], icon_url: val };
                                                             setPrizeDistribution(updated);
                                                         }}
                                                         placeholder="https://example.com/icon.png"
@@ -4740,7 +4838,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                                     value={prize.description || ''}
                                                     onChange={(e) => {
                                                         const updated = [...prizeDistribution];
-                                                        updated[i] = {...updated[i], description: e.target.value};
+                                                        updated[i] = { ...updated[i], description: e.target.value };
                                                         setPrizeDistribution(updated);
                                                     }}
                                                     placeholder="Brief description"
@@ -4844,363 +4942,350 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                 {(event?.faqs || [])
                                     .filter((faq: any) => !faqSearch || faq.question?.toLowerCase().includes(faqSearch.toLowerCase()) || faq.answer?.toLowerCase().includes(faqSearch.toLowerCase()))
                                     .map((faq: any, i: number) => (
-                                    <div key={i} className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
-                                        <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-8 h-8 rounded-xl bg-orange-50 border border-orange-100 flex items-center justify-center text-orange-500 text-[11px] font-black">
-                                                    Q
+                                        <div key={i} className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+                                            <div className="flex items-center justify-between">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-8 h-8 rounded-xl bg-orange-50 border border-orange-100 flex items-center justify-center text-orange-500 text-[11px] font-black">
+                                                        Q
+                                                    </div>
+                                                    <span className="text-sm font-bold text-slate-800 truncate max-w-md">{faq.question || `FAQ ${i + 1}`}</span>
                                                 </div>
-                                                <span className="text-sm font-bold text-slate-800 truncate max-w-md">{faq.question || `FAQ ${i + 1}`}</span>
-                                            </div>
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    const updated = (event?.faqs || []).filter((_: any, j: number) => j !== i);
-                                                    setEvent({ ...event, faqs: updated });
-                                                }}
-                                                className="p-2 rounded-xl border border-red-200 text-red-400 hover:bg-red-50 transition-colors"
-                                            >
-                                                <Trash2 size={16} />
-                                            </button>
-                                        </div>
-                                        <div className="grid grid-cols-1 gap-4">
-                                            <div>
-                                                <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Question</label>
-                                                <input
-                                                    type="text"
-                                                    value={faq.question || ''}
-                                                    onChange={e => {
-                                                        const updated = [...(event?.faqs || [])];
-                                                        updated[i] = { ...updated[i], question: e.target.value };
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const updated = (event?.faqs || []).filter((_: any, j: number) => j !== i);
                                                         setEvent({ ...event, faqs: updated });
                                                     }}
-                                                    placeholder="What is the question?"
-                                                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm outline-none focus:border-purple-400"
-                                                />
+                                                    className="p-2 rounded-xl border border-red-200 text-red-400 hover:bg-red-50 transition-colors"
+                                                >
+                                                    <Trash2 size={16} />
+                                                </button>
                                             </div>
-                                            <div>
-                                                <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Answer</label>
-                                                <textarea
-                                                    value={faq.answer || ''}
-                                                    onChange={e => {
-                                                        const updated = [...(event?.faqs || [])];
-                                                        updated[i] = { ...updated[i], answer: e.target.value };
-                                                        setEvent({ ...event, faqs: updated });
-                                                    }}
-                                                    placeholder="Provide a detailed answer..."
-                                                    rows={3}
-                                                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm outline-none focus:border-purple-400 resize-y"
-                                                />
-                                            </div>
-                                            <div className="grid grid-cols-4 gap-3">
+                                            <div className="grid grid-cols-1 gap-4">
                                                 <div>
-                                                    <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Category</label>
-                                                    <select
-                                                        value={faq.category || 'General'}
-                                                        onChange={e => {
-                                                            const updated = [...(event?.faqs || [])];
-                                                            updated[i] = { ...updated[i], category: e.target.value };
-                                                            setEvent({ ...event, faqs: updated });
-                                                        }}
-                                                        className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm outline-none focus:border-purple-400 bg-white"
-                                                    >
-                                                        <option value="General">📋 General</option>
-                                                        <option value="Registration">📝 Registration</option>
-                                                        <option value="Eligibility">✅ Eligibility</option>
-                                                        <option value="Participation">👥 Participation</option>
-                                                        <option value="Submission">📤 Submission</option>
-                                                        <option value="Technical">💻 Technical</option>
-                                                        <option value="Evaluation">📊 Evaluation</option>
-                                                        <option value="Prizes">🏆 Prizes</option>
-                                                        <option value="Certificates">📜 Certificates</option>
-                                                        <option value="Mentorship">🤝 Mentorship</option>
-                                                        <option value="Results">🏁 Results</option>
-                                                        <option value="Timeline">📅 Timeline</option>
-                                                        <option value="Rules">⚖️ Rules</option>
-                                                        <option value="Support">🆘 Support</option>
-                                                        <option value="Opportunities">🚀 Opportunities</option>
-                                                    </select>
-                                                </div>
-                                                <div>
-                                                    <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Order</label>
+                                                    <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Question</label>
                                                     <input
-                                                        type="number"
-                                                        value={faq.order ?? i}
+                                                        type="text"
+                                                        value={faq.question || ''}
                                                         onChange={e => {
                                                             const updated = [...(event?.faqs || [])];
-                                                            updated[i] = { ...updated[i], order: parseInt(e.target.value) || 0 };
+                                                            updated[i] = { ...updated[i], question: e.target.value };
                                                             setEvent({ ...event, faqs: updated });
                                                         }}
+                                                        placeholder="What is the question?"
                                                         className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm outline-none focus:border-purple-400"
                                                     />
                                                 </div>
                                                 <div>
-                                                    <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Featured</label>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            const updated = [...(event?.faqs || [])];
-                                                            updated[i] = { ...updated[i], is_featured: !(faq.is_featured ?? faq.featured) };
-                                                            setEvent({ ...event, faqs: updated });
-                                                        }}
-                                                        className={`w-full px-3 py-2.5 rounded-xl border text-[11px] font-bold transition-all flex items-center justify-center gap-2 ${
-                                                            (faq.is_featured ?? faq.featured) ? 'bg-purple-50 border-purple-300 text-purple-700' : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'
-                                                        }`}
-                                                    >
-                                                        {(faq.is_featured ?? faq.featured) ? '📌 Pinned' : 'Pin'}
-                                                    </button>
-                                                </div>
-                                                <div>
-                                                    <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">🔓 Auto-Pin</label>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            const updated = [...(event?.faqs || [])];
-                                                            updated[i] = { ...updated[i], auto_pin_enabled: !(faq.auto_pin_enabled ?? true) };
-                                                            setEvent({ ...event, faqs: updated });
-                                                        }}
-                                                        className={`w-full px-3 py-2.5 rounded-xl border text-[11px] font-bold transition-all flex items-center justify-center gap-2 ${
-                                                            (faq.auto_pin_enabled ?? true) ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'
-                                                        }`}
-                                                    >
-                                                        {(faq.auto_pin_enabled ?? true) ? 'Auto' : 'Manual'}
-                                                    </button>
-                                                </div>
-                                            </div>
-                                            <div className="grid grid-cols-3 gap-3">
-                                                <div>
-                                                    <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Priority Score</label>
-                                                    <input
-                                                        type="number"
-                                                        min={0}
-                                                        value={faq.priority_score ?? ''}
+                                                    <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Answer</label>
+                                                    <textarea
+                                                        value={faq.answer || ''}
                                                         onChange={e => {
                                                             const updated = [...(event?.faqs || [])];
-                                                            updated[i] = { ...updated[i], priority_score: parseInt(e.target.value) || 0 };
+                                                            updated[i] = { ...updated[i], answer: e.target.value };
                                                             setEvent({ ...event, faqs: updated });
                                                         }}
-                                                        placeholder="Auto-computed"
-                                                        className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm outline-none focus:border-purple-400"
+                                                        placeholder="Provide a detailed answer..."
+                                                        rows={3}
+                                                        className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm outline-none focus:border-purple-400 resize-y"
                                                     />
                                                 </div>
-                                                <div>
-                                                    <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">👍 Helpful Count</label>
-                                                    <input
-                                                        type="number"
-                                                        min={0}
-                                                        value={faq.helpful_count ?? ''}
-                                                        onChange={e => {
-                                                            const updated = [...(event?.faqs || [])];
-                                                            updated[i] = { ...updated[i], helpful_count: parseInt(e.target.value) || 0 };
-                                                            setEvent({ ...event, faqs: updated });
-                                                        }}
-                                                        placeholder="0"
-                                                        className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm outline-none focus:border-purple-400"
-                                                    />
+                                                <div className="grid grid-cols-4 gap-3">
+                                                    <div>
+                                                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Category</label>
+                                                        <select
+                                                            value={faq.category || 'General'}
+                                                            onChange={e => {
+                                                                const updated = [...(event?.faqs || [])];
+                                                                updated[i] = { ...updated[i], category: e.target.value };
+                                                                setEvent({ ...event, faqs: updated });
+                                                            }}
+                                                            className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm outline-none focus:border-purple-400 bg-white"
+                                                        >
+                                                            <option value="General">📋 General</option>
+                                                            <option value="Registration">📝 Registration</option>
+                                                            <option value="Eligibility">✅ Eligibility</option>
+                                                            <option value="Participation">👥 Participation</option>
+                                                            <option value="Submission">📤 Submission</option>
+                                                            <option value="Technical">💻 Technical</option>
+                                                            <option value="Evaluation">📊 Evaluation</option>
+                                                            <option value="Prizes">🏆 Prizes</option>
+                                                            <option value="Certificates">📜 Certificates</option>
+                                                            <option value="Mentorship">🤝 Mentorship</option>
+                                                            <option value="Results">🏁 Results</option>
+                                                            <option value="Timeline">📅 Timeline</option>
+                                                            <option value="Rules">⚖️ Rules</option>
+                                                            <option value="Support">🆘 Support</option>
+                                                            <option value="Opportunities">🚀 Opportunities</option>
+                                                        </select>
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Order</label>
+                                                        <input
+                                                            type="number"
+                                                            value={faq.order ?? i}
+                                                            onChange={e => {
+                                                                const updated = [...(event?.faqs || [])];
+                                                                updated[i] = { ...updated[i], order: parseInt(e.target.value) || 0 };
+                                                                setEvent({ ...event, faqs: updated });
+                                                            }}
+                                                            className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm outline-none focus:border-purple-400"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Featured</label>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const updated = [...(event?.faqs || [])];
+                                                                updated[i] = { ...updated[i], is_featured: !(faq.is_featured ?? faq.featured) };
+                                                                setEvent({ ...event, faqs: updated });
+                                                            }}
+                                                            className={`w-full px-3 py-2.5 rounded-xl border text-[11px] font-bold transition-all flex items-center justify-center gap-2 ${(faq.is_featured ?? faq.featured) ? 'bg-purple-50 border-purple-300 text-purple-700' : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'
+                                                                }`}
+                                                        >
+                                                            {(faq.is_featured ?? faq.featured) ? '📌 Pinned' : 'Pin'}
+                                                        </button>
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">🔓 Auto-Pin</label>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const updated = [...(event?.faqs || [])];
+                                                                updated[i] = { ...updated[i], auto_pin_enabled: !(faq.auto_pin_enabled ?? true) };
+                                                                setEvent({ ...event, faqs: updated });
+                                                            }}
+                                                            className={`w-full px-3 py-2.5 rounded-xl border text-[11px] font-bold transition-all flex items-center justify-center gap-2 ${(faq.auto_pin_enabled ?? true) ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'
+                                                                }`}
+                                                        >
+                                                            {(faq.auto_pin_enabled ?? true) ? 'Auto' : 'Manual'}
+                                                        </button>
+                                                    </div>
                                                 </div>
-                                                <div>
-                                                    <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">👁️ Views</label>
-                                                    <input
-                                                        type="number"
-                                                        min={0}
-                                                        value={faq.views ?? ''}
-                                                        onChange={e => {
-                                                            const updated = [...(event?.faqs || [])];
-                                                            updated[i] = { ...updated[i], views: parseInt(e.target.value) || 0 };
-                                                            setEvent({ ...event, faqs: updated });
-                                                        }}
-                                                        placeholder="0"
-                                                        className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm outline-none focus:border-purple-400"
-                                                    />
+                                                <div className="grid grid-cols-3 gap-3">
+                                                    <div>
+                                                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Priority Score</label>
+                                                        <input
+                                                            type="number"
+                                                            min={0}
+                                                            value={faq.priority_score ?? ''}
+                                                            onChange={e => {
+                                                                const updated = [...(event?.faqs || [])];
+                                                                updated[i] = { ...updated[i], priority_score: parseInt(e.target.value) || 0 };
+                                                                setEvent({ ...event, faqs: updated });
+                                                            }}
+                                                            placeholder="Auto-computed"
+                                                            className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm outline-none focus:border-purple-400"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">👍 Helpful Count</label>
+                                                        <input
+                                                            type="number"
+                                                            min={0}
+                                                            value={faq.helpful_count ?? ''}
+                                                            onChange={e => {
+                                                                const updated = [...(event?.faqs || [])];
+                                                                updated[i] = { ...updated[i], helpful_count: parseInt(e.target.value) || 0 };
+                                                                setEvent({ ...event, faqs: updated });
+                                                            }}
+                                                            placeholder="0"
+                                                            className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm outline-none focus:border-purple-400"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">👁️ Views</label>
+                                                        <input
+                                                            type="number"
+                                                            min={0}
+                                                            value={faq.views ?? ''}
+                                                            onChange={e => {
+                                                                const updated = [...(event?.faqs || [])];
+                                                                updated[i] = { ...updated[i], views: parseInt(e.target.value) || 0 };
+                                                                setEvent({ ...event, faqs: updated });
+                                                            }}
+                                                            placeholder="0"
+                                                            className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm outline-none focus:border-purple-400"
+                                                        />
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
-                                    </div>
-                                ))}
+                                    ))}
                             </div>
                         )}
                     </div>
-                    {showFaqBulkImport && (
-                        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowFaqBulkImport(false)}>
-                            <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl p-6 space-y-5" onClick={e => e.stopPropagation()}>
-                                <div className="flex items-center justify-between">
-                                    <div>
-                                        <h3 className="text-lg font-black text-slate-900">Bulk Import FAQs</h3>
-                                        <p className="text-sm text-slate-500 font-medium mt-1">Paste text or upload a PDF. One Q&A per entry.</p>
+                        {showFaqBulkImport && (
+                            <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowFaqBulkImport(false)}>
+                                <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl p-6 space-y-5" onClick={e => e.stopPropagation()}>
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <h3 className="text-lg font-black text-slate-900">Bulk Import FAQs</h3>
+                                            <p className="text-sm text-slate-500 font-medium mt-1">Paste text or upload a PDF. One Q&A per entry.</p>
+                                        </div>
+                                        <button onClick={() => setShowFaqBulkImport(false)} className="p-2 hover:bg-slate-100 rounded-full text-slate-400"><X size={18} /></button>
                                     </div>
-                                    <button onClick={() => setShowFaqBulkImport(false)} className="p-2 hover:bg-slate-100 rounded-full text-slate-400"><X size={18} /></button>
-                                </div>
-                                <div className="bg-slate-50 rounded-xl p-4 text-[11px] font-mono text-slate-500 border border-slate-100 leading-relaxed">
-                                    Q: What is the eligibility?<br />
-                                    A: All students can participate.<br />
-                                    Category: General<br />
-                                    Order: 1<br />
-                                    <br />
-                                    Q: What is the team size?<br />
-                                    A: 1-5 members per team.<br />
-                                    Category: Registration<br />
-                                    Order: 2
-                                </div>
+                                    <div className="bg-slate-50 rounded-xl p-4 text-[11px] font-mono text-slate-500 border border-slate-100 leading-relaxed">
+                                        Q: What is the eligibility?<br />
+                                        A: All students can participate.<br />
+                                        Category: General<br />
+                                        Order: 1<br />
+                                        <br />
+                                        Q: What is the team size?<br />
+                                        A: 1-5 members per team.<br />
+                                        Category: Registration<br />
+                                        Order: 2
+                                    </div>
 
-                                {/* Tab: Paste or Upload */}
-                                <div className="flex items-center gap-3 pb-2">
-                                    <label className={`flex items-center gap-2 px-4 py-2 rounded-xl cursor-pointer text-[11px] font-bold transition-all ${faqBulkImportText && !faqBulkImportLoading ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-50 text-slate-500 border border-slate-200 hover:bg-white'}`}>
-                                        <Upload size={14} />
-                                        Upload PDF
-                                        <input
-                                            type="file"
-                                            accept="application/pdf"
-                                            className="hidden"
-                                            disabled={faqBulkImportLoading}
-                                            onChange={async (e) => {
-                                                const file = e.target.files?.[0];
-                                                if (!file) return;
-                                                setFaqBulkImportLoading(true);
-                                                try {
-                                                    const buf = await file.arrayBuffer();
-                                                    const pdf = await getDocument(buf).promise;
-                                                    let text = '';
-                                                    for (let i = 1; i <= pdf.numPages; i++) {
-                                                        const page = await pdf.getPage(i);
-                                                        const content = await page.getTextContent();
-                                                        text += content.items.map((item: any) => item.str).join(' ') + '\n';
+                                    {/* Tab: Paste or Upload */}
+                                    <div className="flex items-center gap-3 pb-2">
+                                        <label className={`flex items-center gap-2 px-4 py-2 rounded-xl cursor-pointer text-[11px] font-bold transition-all ${faqBulkImportText && !faqBulkImportLoading ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-50 text-slate-500 border border-slate-200 hover:bg-white'}`}>
+                                            <Upload size={14} />
+                                            Upload PDF
+                                            <input
+                                                type="file"
+                                                accept="application/pdf"
+                                                className="hidden"
+                                                disabled={faqBulkImportLoading}
+                                                onChange={async (e) => {
+                                                    const file = e.target.files?.[0];
+                                                    if (!file) return;
+                                                    setFaqBulkImportLoading(true);
+                                                    try {
+                                                        const buf = await file.arrayBuffer();
+                                                        const pdf = await getDocument(buf).promise;
+                                                        let text = '';
+                                                        for (let i = 1; i <= pdf.numPages; i++) {
+                                                            const page = await pdf.getPage(i);
+                                                            const content = await page.getTextContent();
+                                                            text += content.items.map((item: any) => item.str).join(' ') + '\n';
+                                                        }
+                                                        setFaqBulkImportText(text);
+                                                    } catch {
+                                                        alert('Failed to read PDF. Make sure it contains selectable text.');
                                                     }
-                                                    setFaqBulkImportText(text);
-                                                } catch {
-                                                    alert('Failed to read PDF. Make sure it contains selectable text.');
+                                                    setFaqBulkImportLoading(false);
+                                                    e.target.value = '';
+                                                }}
+                                            />
+                                        </label>
+                                        {faqBulkImportLoading && <span className="text-xs text-slate-400 font-medium animate-pulse">Reading PDF...</span>}
+                                        {!faqBulkImportLoading && faqBulkImportText && (
+                                            <button onClick={() => setFaqBulkImportText('')} className="text-[11px] text-red-500 font-bold hover:underline">Clear</button>
+                                        )}
+                                    </div>
+
+                                    <textarea
+                                        value={faqBulkImportText}
+                                        onChange={e => setFaqBulkImportText(e.target.value)}
+                                        rows={12}
+                                        placeholder="Paste your FAQs here, or upload a PDF above..."
+                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none text-sm font-medium resize-none focus:bg-white focus:border-emerald-300 transition-all"
+                                    />
+                                    <div className="flex items-center justify-end gap-3">
+                                        <button
+                                            type="button"
+                                            onClick={() => { setShowFaqBulkImport(false); setFaqBulkImportText(''); }}
+                                            className="px-5 py-2.5 text-sm font-bold text-slate-500 hover:bg-slate-100 rounded-full transition-all"
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const AUTO_PIN_KEYWORDS = ['registration', 'last date', 'deadline', 'apply before', 'eligible', 'who can participate', 'allowed', 'criteria', 'team size', 'individual', 'team participation', 'cross-college', 'fee', 'paid', 'free', 'registration cost', 'certificate', 'participation certificate', 'winner certificate', 'online', 'offline', 'hybrid', 'location', 'prize', 'reward', 'cash', 'winning amount', 'submission', 'final submit', 'upload deadline', 'evaluation', 'judging', 'scoring', 'plagiarism', 'cheating', 'disqualification', 'rules', 'internship', 'PPO', 'placement', 'hiring', 'support', 'contact', 'help', 'issue'];
+                                                const MAX_AUTO_PIN = 8;
+                                                const analyzeFaq = (q: string, a: string) => {
+                                                    const text = (q + ' ' + a).toLowerCase();
+                                                    const score = AUTO_PIN_KEYWORDS.reduce((s, kw) => text.includes(kw) ? s + 10 : s, 0);
+                                                    return { priority_score: score };
+                                                };
+
+                                                const text = faqBulkImportText.trim();
+                                                const parsed: any[] = [];
+
+                                                // Try FAQ N  Question  ...  Answer  ...  Category  ...  Order  ... format
+                                                const hasFaqFormat = /\bFAQ\s+\d+/i.test(text);
+                                                if (hasFaqFormat) {
+                                                    const entries = text.split(/\bFAQ\s+\d+\s*/i).filter(Boolean);
+                                                    for (const entry of entries) {
+                                                        const norm = entry.replace(/\s+/g, ' ').trim();
+                                                        const qMatch = norm.match(/\bQuestion\s+(.+?)(?=\s+Answer\s|\s+Category\s|\s+Order\s|$)/i);
+                                                        const aMatch = norm.match(/\bAnswer\s+(.+?)(?=\s+Category\s|\s+Order\s|$)/i);
+                                                        const cMatch = norm.match(/\bCategory\s+(.+?)(?=\s+Order\s|$)/i);
+                                                        const oMatch = norm.match(/\bOrder\s+(\d+)/i);
+                                                        if (qMatch || aMatch) {
+                                                            const question = qMatch ? qMatch[1].trim() : '';
+                                                            const answer = aMatch ? aMatch[1].trim() : '';
+                                                            parsed.push({
+                                                                question,
+                                                                answer,
+                                                                category: cMatch ? cMatch[1].trim().replace(/^FAQ\s+\d+\s*/i, '') : 'General',
+                                                                order: oMatch ? parseInt(oMatch[1], 10) || 0 : 0,
+                                                                ...analyzeFaq(question, answer),
+                                                            });
+                                                        }
+                                                    }
+                                                } else {
+                                                    // Per-line format: Q:/Question:/A:/Answer:/Category:/Order:
+                                                    const lines = text.split('\n');
+                                                    let current: any = {};
+                                                    for (const line of lines) {
+                                                        const trimmed = line.trim();
+                                                        if (!trimmed) {
+                                                            if (current.question || current.answer) {
+                                                                parsed.push({ category: 'General', order: (event?.faqs || []).length + parsed.length, ...current, ...analyzeFaq(current.question || '', current.answer || '') });
+                                                                current = {};
+                                                            }
+                                                            continue;
+                                                        }
+                                                        if (trimmed.toUpperCase().startsWith('Q:') || trimmed.toUpperCase().startsWith('QUESTION:')) {
+                                                            if (current.question || current.answer) {
+                                                                parsed.push({ category: 'General', order: (event?.faqs || []).length + parsed.length, ...current, ...analyzeFaq(current.question || '', current.answer || '') });
+                                                                current = {};
+                                                            }
+                                                            current.question = trimmed.replace(/^(Q:|Question:)\s*/i, '').trim();
+                                                        } else if (trimmed.toUpperCase().startsWith('A:') || trimmed.toUpperCase().startsWith('ANSWER:')) {
+                                                            current.answer = trimmed.replace(/^(A:|Answer:)\s*/i, '').trim();
+                                                        } else if (trimmed.toUpperCase().startsWith('CATEGORY:')) {
+                                                            current.category = trimmed.slice(9).trim();
+                                                        } else if (trimmed.toUpperCase().startsWith('ORDER:')) {
+                                                            current.order = parseInt(trimmed.slice(6).trim()) || 0;
+                                                        }
+                                                    }
+                                                    if (current.question || current.answer) {
+                                                        parsed.push({ category: 'General', order: (event?.faqs || []).length + parsed.length, ...current, ...analyzeFaq(current.question || '', current.answer || '') });
+                                                    }
                                                 }
-                                                setFaqBulkImportLoading(false);
-                                                e.target.value = '';
+                                                // Pin top N by priority score
+                                                const scored = parsed.map((f: any) => ({ ...f }));
+                                                scored.sort((a: any, b: any) => (b.priority_score || 0) - (a.priority_score || 0));
+                                                scored.forEach((f: any, idx: number) => {
+                                                    f.is_featured = idx < MAX_AUTO_PIN && (f.priority_score || 0) > 0;
+                                                    f.auto_pin_enabled = f.is_featured;
+                                                });
+                                                if (scored.length > 0) {
+                                                    setEvent(prev => ({ ...prev, faqs: [...(prev?.faqs || []), ...scored] }));
+                                                }
+                                                setFaqBulkImportText('');
+                                                setShowFaqBulkImport(false);
                                             }}
-                                        />
-                                    </label>
-                                    {faqBulkImportLoading && <span className="text-xs text-slate-400 font-medium animate-pulse">Reading PDF...</span>}
-                                    {!faqBulkImportLoading && faqBulkImportText && (
-                                        <button onClick={() => setFaqBulkImportText('')} className="text-[11px] text-red-500 font-bold hover:underline">Clear</button>
-                                    )}
-                                </div>
-
-                                <textarea
-                                    value={faqBulkImportText}
-                                    onChange={e => setFaqBulkImportText(e.target.value)}
-                                    rows={12}
-                                    placeholder="Paste your FAQs here, or upload a PDF above..."
-                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none text-sm font-medium resize-none focus:bg-white focus:border-emerald-300 transition-all"
-                                />
-                                <div className="flex items-center justify-end gap-3">
-                                    <button
-                                        type="button"
-                                        onClick={() => { setShowFaqBulkImport(false); setFaqBulkImportText(''); }}
-                                        className="px-5 py-2.5 text-sm font-bold text-slate-500 hover:bg-slate-100 rounded-full transition-all"
-                                    >
-                                        Cancel
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            const AUTO_PIN_KEYWORDS = ['registration', 'last date', 'deadline', 'apply before', 'eligible', 'who can participate', 'allowed', 'criteria', 'team size', 'individual', 'team participation', 'cross-college', 'fee', 'paid', 'free', 'registration cost', 'certificate', 'participation certificate', 'winner certificate', 'online', 'offline', 'hybrid', 'location', 'prize', 'reward', 'cash', 'winning amount', 'submission', 'final submit', 'upload deadline', 'evaluation', 'judging', 'scoring', 'plagiarism', 'cheating', 'disqualification', 'rules', 'internship', 'PPO', 'placement', 'hiring', 'support', 'contact', 'help', 'issue'];
-                                            const MAX_AUTO_PIN = 8;
-                                            const analyzeFaq = (q: string, a: string) => {
-                                                const text = (q + ' ' + a).toLowerCase();
-                                                const score = AUTO_PIN_KEYWORDS.reduce((s, kw) => text.includes(kw) ? s + 10 : s, 0);
-                                                return { priority_score: score };
-                                            };
-
-                                            const text = faqBulkImportText.trim();
-                                            const parsed: any[] = [];
-
-                                            // Try FAQ N  Question  ...  Answer  ...  Category  ...  Order  ... format
-                                            const hasFaqFormat = /\bFAQ\s+\d+/i.test(text);
-                                            if (hasFaqFormat) {
-                                                const entries = text.split(/\bFAQ\s+\d+\s*/i).filter(Boolean);
-                                                for (const entry of entries) {
-                                                    const norm = entry.replace(/\s+/g, ' ').trim();
-                                                    const qMatch = norm.match(/\bQuestion\s+(.+?)(?=\s+Answer\s|\s+Category\s|\s+Order\s|$)/i);
-                                                    const aMatch = norm.match(/\bAnswer\s+(.+?)(?=\s+Category\s|\s+Order\s|$)/i);
-                                                    const cMatch = norm.match(/\bCategory\s+(.+?)(?=\s+Order\s|$)/i);
-                                                    const oMatch = norm.match(/\bOrder\s+(\d+)/i);
-                                                    if (qMatch || aMatch) {
-                                                        const question = qMatch ? qMatch[1].trim() : '';
-                                                        const answer = aMatch ? aMatch[1].trim() : '';
-                                                        parsed.push({
-                                                            question,
-                                                            answer,
-                                                            category: cMatch ? cMatch[1].trim().replace(/^FAQ\s+\d+\s*/i, '') : 'General',
-                                                            order: oMatch ? parseInt(oMatch[1], 10) || 0 : 0,
-                                                            ...analyzeFaq(question, answer),
-                                                        });
-                                                    }
-                                                }
-                                            } else {
-                                                // Per-line format: Q:/Question:/A:/Answer:/Category:/Order:
-                                                const lines = text.split('\n');
-                                                let current: any = {};
-                                                for (const line of lines) {
-                                                    const trimmed = line.trim();
-                                                    if (!trimmed) {
-                                                        if (current.question || current.answer) {
-                                                            parsed.push({ category: 'General', order: (event?.faqs || []).length + parsed.length, ...current, ...analyzeFaq(current.question || '', current.answer || '') });
-                                                            current = {};
-                                                        }
-                                                        continue;
-                                                    }
-                                                    if (trimmed.toUpperCase().startsWith('Q:') || trimmed.toUpperCase().startsWith('QUESTION:')) {
-                                                        if (current.question || current.answer) {
-                                                            parsed.push({ category: 'General', order: (event?.faqs || []).length + parsed.length, ...current, ...analyzeFaq(current.question || '', current.answer || '') });
-                                                            current = {};
-                                                        }
-                                                        current.question = trimmed.replace(/^(Q:|Question:)\s*/i, '').trim();
-                                                    } else if (trimmed.toUpperCase().startsWith('A:') || trimmed.toUpperCase().startsWith('ANSWER:')) {
-                                                        current.answer = trimmed.replace(/^(A:|Answer:)\s*/i, '').trim();
-                                                    } else if (trimmed.toUpperCase().startsWith('CATEGORY:')) {
-                                                        current.category = trimmed.slice(9).trim();
-                                                    } else if (trimmed.toUpperCase().startsWith('ORDER:')) {
-                                                        current.order = parseInt(trimmed.slice(6).trim()) || 0;
-                                                    }
-                                                }
-                                                if (current.question || current.answer) {
-                                                    parsed.push({ category: 'General', order: (event?.faqs || []).length + parsed.length, ...current, ...analyzeFaq(current.question || '', current.answer || '') });
-                                                }
-                                            }
-                                            // Pin top N by priority score
-                                            const scored = parsed.map((f: any) => ({ ...f }));
-                                            scored.sort((a: any, b: any) => (b.priority_score || 0) - (a.priority_score || 0));
-                                            scored.forEach((f: any, idx: number) => {
-                                                f.is_featured = idx < MAX_AUTO_PIN && (f.priority_score || 0) > 0;
-                                                f.auto_pin_enabled = f.is_featured;
-                                            });
-                                            if (scored.length > 0) {
-                                                setEvent(prev => ({ ...prev, faqs: [...(prev?.faqs || []), ...scored] }));
-                                            }
-                                            setFaqBulkImportText('');
-                                            setShowFaqBulkImport(false);
-                                        }}
-                                        className="flex items-center gap-2 px-6 py-2.5 bg-emerald-500 text-white rounded-full text-sm font-bold hover:bg-emerald-600 transition-all"
-                                    >
-                                        <UploadCloud size={14} />
-                                        Import ({(() => { const t = faqBulkImportText.trim(); if (/\bFAQ\s+\d+/i.test(t)) { return (t.match(/\bFAQ\s+\d+/gi) || []).length; } return t.split('\n').filter(l => { const u = l.trim().toUpperCase(); return u.startsWith('Q:') || u.startsWith('QUESTION:'); }).length; })()} FAQs)
-                                    </button>
+                                            className="flex items-center gap-2 px-6 py-2.5 bg-emerald-500 text-white rounded-full text-sm font-bold hover:bg-emerald-600 transition-all"
+                                        >
+                                            <UploadCloud size={14} />
+                                            Import ({(() => { const t = faqBulkImportText.trim(); if (/\bFAQ\s+\d+/i.test(t)) { return (t.match(/\bFAQ\s+\d+/gi) || []).length; } return t.split('\n').filter(l => { const u = l.trim().toUpperCase(); return u.startsWith('Q:') || u.startsWith('QUESTION:'); }).length; })()} FAQs)
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                    )}
-                </>
+                        )}
+                    </>
                 );
 
             case 'leaderboard':
-                return (
-                    <LeaderboardPage
-                        eventId={eventId}
-                        refreshCounter={refreshCounter}
-                        stages={stages.filter((s) => {
-                            const t = String(s.type || '').toUpperCase();
-                            const n = String(s.name || '').toLowerCase();
-                            return !['REGISTRATION', 'TEAM_FORMATION', 'QUIZ'].includes(t)
-                                && !n.includes('registration')
-                                && !n.includes('team formation');
-                        })}
-                    />
-                );
+                return <LeaderboardPage eventId={eventId} refreshCounter={refreshCounter} submissions={submissions} />;
+
             case 'pipeline':
                 return <PipelineView eventId={eventId} stages={stages} />;
             case 'package':
@@ -5223,18 +5308,18 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                         </button>
                     )}
                     <div>
-                         <div className="flex items-center gap-3 mb-1">
-                             <h1 className="text-4xl font-black text-slate-900 tracking-tighter">{event.title}</h1>
-                             <div className="px-3 py-1 bg-emerald-50 text-emerald-600 rounded-full text-[9px] font-black uppercase tracking-widest border border-emerald-100">Live Portal</div>
-                         </div>
-                         <p className="text-slate-500 text-sm font-bold flex items-center gap-6"><span className="flex items-center gap-2 text-[#6C3BFF]"><MapPin size={16} /> Hybrid Environment</span><span className="flex items-center gap-2"><Users size={16} /> {event.participant_count || 0} Authenticated Participants</span></p>
+                        <div className="flex items-center gap-3 mb-1">
+                            <h1 className="text-4xl font-black text-slate-900 tracking-tighter">{event.title}</h1>
+                            <div className="px-3 py-1 bg-emerald-50 text-emerald-600 rounded-full text-[9px] font-black uppercase tracking-widest border border-emerald-100">Live Portal</div>
+                        </div>
+                        <p className="text-slate-500 text-sm font-bold flex items-center gap-6"><span className="flex items-center gap-2 text-[#6C3BFF]"><MapPin size={16} /> Hybrid Environment</span><span className="flex items-center gap-2"><Users size={16} /> {event.participant_count || 0} Authenticated Participants</span></p>
                     </div>
                 </div>
                 <div className="flex items-center gap-4">
                     {role !== 'judge' && (
-                        <button 
-                            onClick={handleSaveEvent} 
-                            disabled={saving} 
+                        <button
+                            onClick={handleSaveEvent}
+                            disabled={saving}
                             className={`px-10 py-5 ${showSaveSuccess ? 'bg-emerald-500' : hasUnsavedChanges ? 'bg-[#6C3BFF] animate-pulse' : 'bg-slate-900'} text-white rounded-[1.8rem] font-black text-xs uppercase tracking-widest hover:scale-[1.05] active:scale-95 transition-all shadow-2xl shadow-black/10 flex items-center gap-3 relative`}
                         >
                             {hasUnsavedChanges && !saving && !showSaveSuccess && (
@@ -5250,7 +5335,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
             {/* Bulk Action Bar */}
             <FramerAnimatePresence>
                 {selectedSubmissions.length > 0 && (
-                    <motion.div 
+                    <motion.div
                         initial={{ y: 100, opacity: 0 }}
                         animate={{ y: 0, opacity: 1 }}
                         exit={{ y: 100, opacity: 0 }}
@@ -5263,16 +5348,16 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                     <span className="text-xl font-black">{selectedSubmissions.length} <span className="text-slate-500">Teams Selected</span></span>
                                 </div>
                             </div>
-                            
+
                             <div className="flex items-center gap-3 pr-2">
-                                <button 
+                                <button
                                     onClick={() => handleOpenJudgeAssignment('bulk')}
                                     className="px-8 py-4 bg-[#6C3BFF] hover:bg-[#5a2ee6] text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-3 shadow-lg shadow-purple-500/20"
                                 >
                                     <Gavel size={16} />
                                     Assign Judge to Group
                                 </button>
-                                <button 
+                                <button
                                     onClick={() => setSelectedSubmissions([])}
                                     className="p-4 bg-white/5 hover:bg-white/10 text-white rounded-2xl transition-all"
                                 >
@@ -5308,7 +5393,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
 
             <div className="bg-white/40 backdrop-blur-xl border border-white/20 p-2.5 rounded-[4rem] shadow-2xl shadow-slate-200/50">
                 <div className="bg-white p-12 rounded-[3.5rem] shadow-inner min-h-[600px] border border-slate-50">
-                                        <FramerAnimatePresence mode="wait">
+                    <FramerAnimatePresence mode="wait">
                         <motion.div
                             key={activeTab}
                             initial={{ opacity: 0, y: 10 }}
@@ -5322,13 +5407,13 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                 </div>
             </div>
 
-            <QuizDesignerModal 
-                isOpen={isQuizModalOpen} 
-                onClose={() => setIsQuizModalOpen(false)} 
+            <QuizDesignerModal
+                isOpen={isQuizModalOpen}
+                onClose={() => setIsQuizModalOpen(false)}
                 onSave={handleCreateQuiz}
                 loading={isCreatingQuiz}
                 initialQuizData={
-                    quizStageId 
+                    quizStageId
                         ? quizzes.find((q) => String(q._id || q.id) === String(stages.find((s) => s.id === quizStageId)?.config?.quiz_id))
                         : null
                 }
@@ -5343,35 +5428,63 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                 stageName={reviewQuiz?.stageName || ''}
             />
 
-            {/* Text submission preview */}
+            {/* Modals and Overlays */}
+            {renderTeamDetailModal()}
             <FramerAnimatePresence>
-                {textPreview && (
-                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                        className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm"
-                        onClick={() => setTextPreview(null)}>
-                        <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }}
-                            onClick={(e) => e.stopPropagation()}
-                            className="bg-white w-full max-w-2xl rounded-[2rem] shadow-2xl p-8 max-h-[80vh] overflow-y-auto">
-                            <div className="flex items-center justify-between mb-6">
-                                <h3 className="text-lg font-black text-slate-900">{textPreview.title}</h3>
-                                <button onClick={() => setTextPreview(null)} className="p-2 rounded-xl hover:bg-slate-100"><X size={20} /></button>
+                {previewRecommendation && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm"
+                    >
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                            className="bg-white rounded-[2rem] shadow-2xl w-full max-w-2xl overflow-hidden border border-slate-100 flex flex-col max-h-[85vh]"
+                        >
+                            <div className="flex items-center justify-between p-6 border-b border-slate-100 bg-slate-50/50">
+                                <div>
+                                    <h3 className="text-xl font-black text-slate-900">{previewRecommendation.title}</h3>
+                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Judge Recommendation</p>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={() => setPreviewRecommendation(null)}
+                                        className="p-2.5 rounded-xl hover:bg-slate-200/50 text-slate-400 hover:text-slate-600 transition-colors"
+                                    >
+                                        <X size={20} />
+                                    </button>
+                                </div>
                             </div>
-                            <p className="text-slate-700 whitespace-pre-wrap leading-relaxed">{textPreview.content}</p>
+                            <div className="p-8 overflow-y-auto">
+                                <div className="prose prose-slate prose-p:leading-relaxed max-w-none text-slate-700">
+                                    {previewRecommendation.text.split('\n').map((para, i) => (
+                                        <p key={i} className="mb-4 last:mb-0 text-sm font-medium">{para}</p>
+                                    ))}
+                                </div>
+                            </div>
+                            <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex justify-end">
+                                <button
+                                    onClick={() => setPreviewRecommendation(null)}
+                                    className="px-6 py-2.5 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-colors"
+                                >
+                                    Close
+                                </button>
+                            </div>
                         </motion.div>
                     </motion.div>
                 )}
-            </FramerAnimatePresence>
 
-            {/* Asset Preview Modal */}
-            <FramerAnimatePresence>
                 {previewAsset && (
-                    <motion.div 
+                    <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm"
                     >
-                        <motion.div 
+                        <motion.div
                             initial={{ scale: 0.95, opacity: 0, y: 20 }}
                             animate={{ scale: 1, opacity: 1, y: 0 }}
                             exit={{ scale: 0.95, opacity: 0, y: 20 }}
@@ -5383,30 +5496,23 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Institutional Asset Intelligence Protocol • Secure Preview</p>
                                 </div>
                                 <div className="flex items-center gap-4">
-                                    {!previewAsset.loading && (
-                                        <>
-                                            <a 
-                                                href={previewAsset.url} 
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="flex items-center gap-2 px-6 py-3 bg-slate-100 text-slate-600 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-[#6C3BFF] hover:text-white transition-all"
-                                            >
-                                                <ExternalLink size={14} /> Open Original
-                                            </a>
-                                            <a 
-                                                href={previewAsset.url} 
-                                                download 
-                                                className="flex items-center gap-2 px-6 py-3 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:shadow-xl transition-all"
-                                            >
-                                                <Download size={14} /> Download
-                                            </a>
-                                        </>
-                                    )}
-                                    <button 
-                                        onClick={() => {
-                                            if (previewAsset?.url?.startsWith('blob:')) URL.revokeObjectURL(previewAsset.url);
-                                            setPreviewAsset(null);
-                                        }}
+                                    <a
+                                        href={previewAsset.url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="flex items-center gap-2 px-6 py-3 bg-slate-100 text-slate-600 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-[#6C3BFF] hover:text-white transition-all"
+                                    >
+                                        <ExternalLink size={14} /> Open Original
+                                    </a>
+                                    <a
+                                        href={previewAsset.url}
+                                        download
+                                        className="flex items-center gap-2 px-6 py-3 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:shadow-xl transition-all"
+                                    >
+                                        <Download size={14} /> Download
+                                    </a>
+                                    <button
+                                        onClick={() => setPreviewAsset(null)}
                                         className="p-4 bg-slate-50 text-slate-400 hover:text-slate-900 rounded-2xl transition-all"
                                     >
                                         <X size={20} />
@@ -5415,13 +5521,108 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                             </div>
                             <div className="flex-1 bg-slate-100 p-8 relative">
                                 <div className="w-full h-full rounded-[2rem] overflow-hidden shadow-2xl bg-white relative">
-                                    {previewAsset.loading ? (
-                                        <div className="w-full h-full flex flex-col items-center justify-center gap-4">
-                                            <div className="w-10 h-10 border-4 border-[#6C3BFF] border-t-transparent rounded-full animate-spin" />
-                                            <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Loading preview…</p>
+                                    {/* File Preview by type */}
+                                    {previewAsset.filename.toLowerCase().match(/\.(pdf)$/) ? (
+                                        <iframe
+                                            src={previewAsset.url.startsWith('data:') ? dataUriToBlobUrl(previewAsset.url) : previewAsset.url}
+                                            className="w-full h-full border-none"
+                                            title="PDF Preview"
+                                        />
+                                    ) : previewAsset.filename.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp|svg)$/) ? (
+                                        <img
+                                            src={previewAsset.url}
+                                            className="w-full h-full object-contain"
+                                            alt={previewAsset.filename}
+                                        />
+                                    ) : previewAsset.filename.toLowerCase().match(/\.(mp4|webm|mov)$/) ? (
+                                        <video
+                                            src={previewAsset.url}
+                                            controls
+                                            className="w-full h-full"
+                                        />
+                                    ) : previewAsset.filename.toLowerCase().match(/\.(pptx|ppt|docx|doc|xlsx|xls)$/) ? (
+                                        <div className="w-full h-full flex flex-col bg-slate-50 relative">
+                                            <div className="absolute inset-0 flex items-center justify-center -z-0">
+                                                <div className="w-12 h-12 border-4 border-slate-200 border-t-[#6C3BFF] rounded-full animate-spin"></div>
+                                            </div>
+                                            <iframe
+                                                src={`https://docs.google.com/viewer?url=${encodeURIComponent(previewAsset.url)}&embedded=true`}
+                                                className="flex-1 w-full border-none bg-white relative z-10"
+                                                title="Office Preview"
+                                            />
+                                            <div className="p-4 bg-white border-t border-slate-100 flex items-center justify-between px-8">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-8 h-8 bg-orange-50 rounded-lg flex items-center justify-center text-orange-600 font-black text-xs">PPT</div>
+                                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Document Intelligence Protocol Active</span>
+                                                </div>
+                                                <div className="flex gap-2">
+                                                    <a
+                                                        href={`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(previewAsset.url)}`}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-slate-900 hover:text-white transition-all"
+                                                    >
+                                                        Alternative Viewer (MS Office)
+                                                    </a>
+                                                </div>
+                                            </div>
+                                            {/* Localhost / Offline Fallback */}
+                                            {previewAsset.url.includes('localhost') && (
+                                                <div className="absolute inset-0 z-20 bg-white/90 backdrop-blur-sm flex items-center justify-center p-12 text-center">
+                                                    <div className="max-w-md space-y-6">
+                                                        <div className="w-20 h-20 bg-amber-50 rounded-[2rem] flex items-center justify-center text-4xl mx-auto shadow-inner">🚧</div>
+                                                        <div className="space-y-2">
+                                                            <h4 className="text-xl font-black text-slate-900 uppercase tracking-tight">Localhost Preview Blocked</h4>
+                                                            <p className="text-sm text-slate-500 leading-relaxed font-medium">
+                                                                Cloud viewers (Google/Microsoft) cannot access files stored on your local machine (localhost).
+                                                            </p>
+                                                        </div>
+                                                        <div className="flex flex-col gap-3">
+                                                            <a
+                                                                href={previewAsset.url}
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                className="w-full py-4 bg-[#6C3BFF] text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-xl shadow-purple-500/20"
+                                                            >
+                                                                Open File Directly
+                                                            </a>
+                                                            <a
+                                                                href={previewAsset.url}
+                                                                download
+                                                                className="w-full py-4 bg-slate-900 text-white rounded-2xl text-xs font-black uppercase tracking-widest"
+                                                            >
+                                                                Download & View
+                                                            </a>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
                                     ) : (
-                                        <FilePreviewPanel url={previewAsset.url} filename={previewAsset.filename} mime={previewAsset.mime} />
+                                        <div className="flex flex-col items-center justify-center h-full gap-6 p-8">
+                                            <div className="w-24 h-24 bg-slate-50 rounded-3xl flex items-center justify-center text-5xl">📎</div>
+                                            <div className="text-center space-y-2">
+                                                <p className="text-xl font-black text-slate-900">{previewAsset.filename}</p>
+                                                <p className="text-sm text-slate-500 font-medium">Preview not available for this file type</p>
+                                            </div>
+                                            <div className="flex gap-3">
+                                                <a
+                                                    href={previewAsset.url}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="flex items-center gap-2 px-8 py-4 bg-slate-900 text-white rounded-2xl text-sm font-black uppercase tracking-widest hover:bg-purple-700 transition-all shadow-lg"
+                                                >
+                                                    <ExternalLink size={18} /> Open File
+                                                </a>
+                                                <a
+                                                    href={previewAsset.url}
+                                                    download
+                                                    className="flex items-center gap-2 px-8 py-4 bg-slate-100 text-slate-700 rounded-2xl text-sm font-black uppercase tracking-widest hover:bg-slate-200 transition-all"
+                                                >
+                                                    <Download size={18} /> Download
+                                                </a>
+                                            </div>
+                                        </div>
                                     )}
                                 </div>
                             </div>
@@ -5429,7 +5630,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                     </motion.div>
                 )}
             </FramerAnimatePresence>
-            
+
             {/* Judge Assignment Modal */}
             {judgeAssignmentModal.isOpen && (
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[70]">
@@ -5442,43 +5643,34 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                 {judgeAssignmentModal.submissionId === 'bulk' ? `Assigning to ${selectedSubmissions.length} projects` : 'Single Project Evaluation'}
                             </p>
                         </div>
-                        {availableJudges.length > 0 && (() => {
-                            const counts = availableJudges.map((j: any) => j.assignment_count ?? 0);
-                            const avg = counts.length ? counts.reduce((a, b) => a + b, 0) / counts.length : 0;
-                            const unassigned = judgeAssignmentModal.submissionId === 'bulk'
-                                ? selectedSubmissions.length
-                                : 1;
-                            const needMoreJudges = availableJudges.length < 3 || (avg > 0 && unassigned > availableJudges.length * 2);
-                            return needMoreJudges ? (
-                                <div className="mb-4 p-4 bg-amber-50 border border-amber-100 rounded-xl text-xs text-amber-800">
-                                    <strong>Workload tip:</strong> You have {availableJudges.length} judge{availableJudges.length !== 1 ? 's' : ''} for {unassigned} submission{unassigned !== 1 ? 's' : ''}.
-                                    {availableJudges.length < 3 ? ' Consider inviting more judges to spread evaluations evenly.' : ' Some judges already carry more assignments — pick the lightest load below.'}
-                                </div>
-                            ) : null;
-                        })()}
-                        <div className="space-y-3 max-h-64 overflow-y-auto">
+                        <div className="space-y-4 max-h-64 overflow-y-auto">
                             {availableJudges.length > 0 ? (
-                                [...availableJudges]
-                                    .sort((a: any, b: any) => (a.assignment_count ?? 0) - (b.assignment_count ?? 0))
-                                    .map((judge: any) => (
-                                    <label key={judge._id} className={`flex items-center justify-between p-4 border rounded-xl cursor-pointer transition-colors ${bulkAssignJudgeId === judge._id ? 'border-purple-500 bg-purple-50' : 'border-slate-200 hover:bg-slate-50'}`}>
-                                        <div className="flex items-center gap-4">
-                                            <input
-                                                type="radio"
-                                                name="bulk-judge"
-                                                checked={bulkAssignJudgeId === judge._id}
-                                                onChange={() => setBulkAssignJudgeId(judge._id)}
-                                                className="w-4 h-4 text-purple-600"
-                                            />
+                                availableJudges.map((judge: any) => (
+                                    <div key={judge._id} className="p-4 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors">
+                                        <div className="flex items-center justify-between">
                                             <div>
                                                 <h4 className="font-semibold text-slate-900">{judge.name || 'Unknown Judge'}</h4>
                                                 <p className="text-sm text-slate-600">{judge.email}</p>
-                                                <p className="text-[10px] font-black text-purple-600 uppercase tracking-widest mt-1">
-                                                    {judge.assignment_count ?? 0} currently assigned
-                                                </p>
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <button
+                                                    onClick={() => handleAssignJudge(judge._id, judge.email)}
+                                                    className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 transition-colors"
+                                                >
+                                                    Assign
+                                                </button>
+                                                {judgeAssignmentModal.submissionId !== 'bulk' && (
+                                                    <button
+                                                        onClick={() => copyToClipboard(`${window.location.origin}/evaluate/${judgeAssignmentModal.submissionId}`)}
+                                                        className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-all"
+                                                        title="Copy Evaluation Link"
+                                                    >
+                                                        <Copy size={16} />
+                                                    </button>
+                                                )}
                                             </div>
                                         </div>
-                                    </label>
+                                    </div>
                                 ))
                             ) : (
                                 <div className="text-center py-8">
@@ -5487,7 +5679,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                     </div>
                                     <p className="text-slate-600 font-bold">No judges available</p>
                                     <p className="text-xs text-slate-400 mt-2 max-w-[200px] mx-auto">Invite professional evaluators to review this submission.</p>
-                                    <button 
+                                    <button
                                         onClick={() => setIsJudgeInviteOpen(true)}
                                         className="mt-6 px-6 py-3 bg-[#6C3BFF] text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:scale-[1.02] transition-all shadow-xl shadow-purple-500/20"
                                     >
@@ -5496,47 +5688,25 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                 </div>
                             )}
                         </div>
-                        <div className="mt-6 flex flex-col gap-3">
-                            {availableJudges.length > 0 && (
-                                <button
-                                    disabled={!bulkAssignJudgeId}
-                                    onClick={() => {
-                                        const judge = availableJudges.find((j: any) => j._id === bulkAssignJudgeId);
-                                        if (!judge) return;
-                                        if (judgeAssignmentModal.submissionId === 'bulk') {
-                                            handleBulkAssign(bulkAssignJudgeId);
-                                        } else if (judgeAssignmentModal.submissionId) {
-                                            handleAssignJudge(bulkAssignJudgeId, judge.email);
-                                        }
-                                        setBulkAssignJudgeId('');
-                                    }}
-                                    className="w-full py-4 bg-[#6C3BFF] text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-purple-700 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-                                >
-                                    {judgeAssignmentModal.submissionId === 'bulk'
-                                        ? `Assign ${selectedSubmissions.length} submission${selectedSubmissions.length !== 1 ? 's' : ''} (one email)`
-                                        : 'Confirm Assignment'}
-                                </button>
-                            )}
-                            <div className="flex gap-3">
-                                <button 
-                                    onClick={() => setIsJudgeInviteOpen(true)}
-                                    className="flex-1 py-3 border border-slate-100 text-[#6C3BFF] rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-50 transition-all"
-                                >
-                                    Add Judge
-                                </button>
-                                <button 
-                                    onClick={() => { setJudgeAssignmentModal({ isOpen: false, submissionId: null }); setBulkAssignJudgeId(''); }}
-                                    className="flex-1 py-3 bg-slate-100 text-slate-700 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-200 transition-all"
-                                >
-                                    Cancel
-                                </button>
-                            </div>
+                        <div className="mt-6 flex gap-3">
+                            <button
+                                onClick={() => setIsJudgeInviteOpen(true)}
+                                className="flex-1 py-3 border border-slate-100 text-[#6C3BFF] rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-50 transition-all"
+                            >
+                                Add Another
+                            </button>
+                            <button
+                                onClick={() => setJudgeAssignmentModal({ isOpen: false, submissionId: null })}
+                                className="flex-1 py-3 bg-slate-100 text-slate-700 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-200 transition-all"
+                            >
+                                Cancel
+                            </button>
                         </div>
                     </div>
                 </div>
             )}
 
-            <JudgeInviteModal 
+            <JudgeInviteModal
                 isOpen={isJudgeInviteOpen}
                 onClose={() => setIsJudgeInviteOpen(false)}
                 onInvite={handleInviteJudge}
@@ -5546,13 +5716,13 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
             {/* Bulk Notification Modal */}
             <FramerAnimatePresence>
                 {isBulkNotifyModalOpen && (
-                    <motion.div 
+                    <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         className="fixed inset-0 z-[120] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm"
                     >
-                        <motion.div 
+                        <motion.div
                             initial={{ scale: 0.95, opacity: 0, y: 20 }}
                             animate={{ scale: 1, opacity: 1, y: 0 }}
                             exit={{ scale: 0.95, opacity: 0, y: 20 }}
@@ -5563,14 +5733,14 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                     <h3 className="text-xl font-black text-slate-900">Bulk Communication Hub</h3>
                                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Targeted: Shortlisted Members • Elite Protocol</p>
                                 </div>
-                                <button 
+                                <button
                                     onClick={() => setIsBulkNotifyModalOpen(false)}
                                     className="p-4 bg-slate-50 text-slate-400 hover:text-slate-900 rounded-2xl transition-all"
                                 >
                                     <X size={20} />
                                 </button>
                             </div>
-                            
+
                             <div className="flex-1 p-8 space-y-6 overflow-y-auto max-h-[70vh]">
                                 {/* Template selector */}
                                 {bulkNotifyTemplates.length > 0 && (
@@ -5603,7 +5773,7 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
 
                                 <div className="space-y-3">
                                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Email Subject</label>
-                                    <input 
+                                    <input
                                         value={bulkNotifySubject}
                                         onChange={(e) => setBulkNotifySubject(e.target.value)}
                                         className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 focus:bg-white focus:ring-4 focus:ring-purple-50 transition-all outline-none"
@@ -5616,81 +5786,80 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                                         <span>Message Content</span>
                                         <span className="text-[#6C3BFF]">Personalization Active</span>
                                     </label>
-                                    <textarea 
+                                    <textarea
                                         value={bulkNotifyMessage}
                                         onChange={(e) => setBulkNotifyMessage(e.target.value)}
                                         className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 focus:bg-white focus:ring-4 focus:ring-purple-50 transition-all h-64 resize-none outline-none font-mono text-xs"
                                         placeholder="Compose your custom message..."
                                     />
-                                                    <div className="flex flex-wrap gap-2 px-2">
-                                                        {['{team_name}', '{event_name}', '{stage_name}', '{participant_name}'].map(tag => (
-                                                            <button 
-                                                                key={tag}
-                                                                onClick={() => setBulkNotifyMessage(prev => prev + ' ' + tag)}
-                                                                className="px-3 py-1.5 bg-purple-50 text-[#6C3BFF] rounded-lg text-[10px] font-black tracking-wider border border-purple-100 hover:bg-purple-600 hover:text-white transition-all"
-                                                            >
-                                                                + {tag}
-                                                            </button>
-                                                        ))}
-                                                    </div>
-                                                </div>
+                                    <div className="flex flex-wrap gap-2 px-2">
+                                        {['{team_name}', '{event_name}', '{stage_name}', '{participant_name}'].map(tag => (
+                                            <button
+                                                key={tag}
+                                                onClick={() => setBulkNotifyMessage(prev => prev + ' ' + tag)}
+                                                className="px-3 py-1.5 bg-purple-50 text-[#6C3BFF] rounded-lg text-[10px] font-black tracking-wider border border-purple-100 hover:bg-purple-600 hover:text-white transition-all"
+                                            >
+                                                + {tag}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
 
-                                                {/* Email Preview Toggle */}
-                                                <div className="flex items-center gap-3 px-2">
-                                                    <button
-                                                        onClick={() => setShowBulkPreview(!showBulkPreview)}
-                                                        className={`px-5 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${
-                                                            showBulkPreview ? 'bg-[#6C3BFF] text-white' : 'bg-slate-100 text-slate-600'
-                                                        }`}
-                                                    >
-                                                        {showBulkPreview ? <EyeOff size={14} /> : <Eye size={14} />}
-                                                        {showBulkPreview ? 'Hide Preview' : 'Preview Email'}
-                                                    </button>
-                                                    <span className="text-[10px] text-slate-400 font-bold">
-                                                        Placeholders shown with sample data
-                                                    </span>
-                                                </div>
+                                {/* Email Preview Toggle */}
+                                <div className="flex items-center gap-3 px-2">
+                                    <button
+                                        onClick={() => setShowBulkPreview(!showBulkPreview)}
+                                        className={`px-5 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${showBulkPreview ? 'bg-[#6C3BFF] text-white' : 'bg-slate-100 text-slate-600'
+                                            }`}
+                                    >
+                                        {showBulkPreview ? <EyeOff size={14} /> : <Eye size={14} />}
+                                        {showBulkPreview ? 'Hide Preview' : 'Preview Email'}
+                                    </button>
+                                    <span className="text-[10px] text-slate-400 font-bold">
+                                        Placeholders shown with sample data
+                                    </span>
+                                </div>
 
-                                                {/* Live Preview */}
-                                                {showBulkPreview && (
-                                                    <div className="border border-slate-100 rounded-2xl overflow-hidden bg-white">
-                                                        <div className="px-5 py-3 bg-slate-50 border-b border-slate-100 flex items-center gap-3">
-                                                            <Mail size={16} className="text-slate-400" />
-                                                            <span className="text-xs font-bold text-slate-600">
-                                                                To: <span className="text-slate-400">[recipient email]</span>
-                                                            </span>
-                                                            <span className="text-xs font-bold text-slate-500 ml-auto">
-                                                                Subject:{' '}
-                                                                <span className="text-slate-900">
-                                                                    {bulkNotifySubject
-                                                                        .replace(/\{team_name\}/g, '[Team Name]')
-                                                                        .replace(/\{event_name\}/g, event?.title || '[Event Name]')
-                                                                        .replace(/\{stage_name\}/g, bulkNotifyNextStage || '[Stage Name]')
-                                                                        .replace(/\{participant_name\}/g, '[Participant Name]')
-                                                                        .replace(/\{custom_message\}/g, '[Custom Message]')
-                                                                    }
-                                                                </span>
-                                                            </span>
-                                                        </div>
-                                                        <div
-                                                            className="p-6 max-h-[400px] overflow-y-auto"
-                                                            dangerouslySetInnerHTML={{
-                                                                __html: bulkNotifyMessage
-                                                                    .replace(/\{team_name\}/g, '[Team Name]')
-                                                                    .replace(/\{event_name\}/g, event?.title || '[Event Name]')
-                                                                    .replace(/\{stage_name\}/g, bulkNotifyNextStage || '[Stage Name]')
-                                                                    .replace(/\{participant_name\}/g, '[Participant Name]')
-                                                                    .replace(/\{custom_message\}/g, '[Custom Message]')
-                                                                    .replace(/\{deadline\}/g, '[Deadline Date]')
-                                                                    .replace(/\{new_deadline\}/g, '[Extended Deadline]')
-                                                                    .replace(/\{score\}/g, '[Score]')
-                                                                    .replace(/\{frontend_url\}/g, '[App URL]')
-                                                            }}
-                                                        />
-                                                    </div>
-                                                )}
+                                {/* Live Preview */}
+                                {showBulkPreview && (
+                                    <div className="border border-slate-100 rounded-2xl overflow-hidden bg-white">
+                                        <div className="px-5 py-3 bg-slate-50 border-b border-slate-100 flex items-center gap-3">
+                                            <Mail size={16} className="text-slate-400" />
+                                            <span className="text-xs font-bold text-slate-600">
+                                                To: <span className="text-slate-400">[recipient email]</span>
+                                            </span>
+                                            <span className="text-xs font-bold text-slate-500 ml-auto">
+                                                Subject:{' '}
+                                                <span className="text-slate-900">
+                                                    {bulkNotifySubject
+                                                        .replace(/\{team_name\}/g, '[Team Name]')
+                                                        .replace(/\{event_name\}/g, event?.title || '[Event Name]')
+                                                        .replace(/\{stage_name\}/g, bulkNotifyNextStage || '[Stage Name]')
+                                                        .replace(/\{participant_name\}/g, '[Participant Name]')
+                                                        .replace(/\{custom_message\}/g, '[Custom Message]')
+                                                    }
+                                                </span>
+                                            </span>
+                                        </div>
+                                        <div
+                                            className="p-6 max-h-[400px] overflow-y-auto"
+                                            dangerouslySetInnerHTML={{
+                                                __html: bulkNotifyMessage
+                                                    .replace(/\{team_name\}/g, '[Team Name]')
+                                                    .replace(/\{event_name\}/g, event?.title || '[Event Name]')
+                                                    .replace(/\{stage_name\}/g, bulkNotifyNextStage || '[Stage Name]')
+                                                    .replace(/\{participant_name\}/g, '[Participant Name]')
+                                                    .replace(/\{custom_message\}/g, '[Custom Message]')
+                                                    .replace(/\{deadline\}/g, '[Deadline Date]')
+                                                    .replace(/\{new_deadline\}/g, '[Extended Deadline]')
+                                                    .replace(/\{score\}/g, '[Score]')
+                                                    .replace(/\{frontend_url\}/g, '[App URL]')
+                                            }}
+                                        />
+                                    </div>
+                                )}
 
-                                                {/* Score threshold */}
+                                {/* Score threshold */}
                                 <div className="space-y-3">
                                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">
                                         Minimum Score Filter <span className="text-slate-300 font-normal">(optional)</span>
@@ -5723,13 +5892,13 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                             </div>
 
                             <div className="p-8 border-t border-slate-100 bg-white flex items-center justify-between">
-                                <button 
+                                <button
                                     onClick={() => setIsBulkNotifyModalOpen(false)}
                                     className="px-8 py-4 text-sm font-black text-slate-400 hover:text-slate-600 transition-all"
                                 >
                                     Discard Draft
                                 </button>
-                                <button 
+                                <button
                                     onClick={confirmBulkDispatch}
                                     disabled={notifying}
                                     className="px-10 py-4 bg-[#6C3BFF] text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:scale-105 hover:shadow-2xl hover:shadow-purple-200 transition-all shadow-xl shadow-purple-600/10 flex items-center gap-3"
@@ -5746,170 +5915,153 @@ const EventDetails: React.FC<EventDetailsProps> = ({ eventId, onBack, institutio
                     </motion.div>
                 )}
             </FramerAnimatePresence>
-        {/* Hackathon Evaluation Modal */}
-        <FramerAnimatePresence>
-            {evaluatingSubmission && (
-                <motion.div 
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    className="fixed inset-0 z-[120] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm"
-                >
-                    <motion.div 
-                        initial={{ scale: 0.95, opacity: 0, y: 20 }}
-                        animate={{ scale: 1, opacity: 1, y: 0 }}
-                        exit={{ scale: 0.95, opacity: 0, y: 20 }}
-                        className="bg-white w-full max-w-2xl rounded-[3rem] shadow-2xl overflow-hidden flex flex-col"
+            {/* Hackathon Evaluation Modal */}
+            <FramerAnimatePresence>
+                {evaluatingSubmission && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[120] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm"
                     >
-                        <div className="p-8 border-b border-slate-100 flex items-center justify-between">
-                            <div>
-                                <h3 className="text-xl font-black text-slate-900">Evaluate: {evaluatingSubmission.teamName}</h3>
-                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Submission Analysis Protocol</p>
+                        <motion.div
+                            initial={{ scale: 0.95, opacity: 0, y: 20 }}
+                            animate={{ scale: 1, opacity: 1, y: 0 }}
+                            exit={{ scale: 0.95, opacity: 0, y: 20 }}
+                            className="bg-white w-full max-w-2xl rounded-[3rem] shadow-2xl overflow-hidden flex flex-col"
+                        >
+                            <div className="p-8 border-b border-slate-100 flex items-center justify-between">
+                                <div>
+                                    <h3 className="text-xl font-black text-slate-900">Evaluate: {evaluatingSubmission.teamName}</h3>
+                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Submission Analysis Protocol</p>
+                                </div>
+                                <button
+                                    onClick={() => setEvaluatingSubmission(null)}
+                                    className="p-4 bg-slate-50 text-slate-400 hover:text-slate-900 rounded-2xl transition-all"
+                                >
+                                    <X size={20} />
+                                </button>
                             </div>
-                            <button 
-                                onClick={() => setEvaluatingSubmission(null)}
-                                className="p-4 bg-slate-50 text-slate-400 hover:text-slate-900 rounded-2xl transition-all"
-                            >
-                                <X size={20} />
-                            </button>
-                        </div>
-                        
-                        <div className="flex-1 p-8 space-y-8 overflow-y-auto max-h-[70vh]">
-                            <div className="space-y-4">
-                                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Submission Details</h4>
-                                <div className="text-sm font-medium text-slate-600 bg-slate-50 p-6 rounded-2xl border border-slate-100">
-                                    {(() => {
-                                        const subData = evaluatingSubmission.data || {};
-                                        if (subData && typeof subData === 'object' && Object.keys(subData).length > 0) {
-                                            const stageConfig = stages.find((st: any) =>
-                                                st.id === evaluatingSubmission.stage_id || st._id === evaluatingSubmission.stage_id
-                                            );
-                                            const fieldConfigs: Record<string, any> = {};
-                                            if (stageConfig) {
-                                                const fields = stageConfig.fields || (stageConfig.config?.fields) || [];
-                                                for (const f of fields) {
-                                                    fieldConfigs[f.id || f.key] = f;
+
+                            <div className="flex-1 p-8 space-y-8 overflow-y-auto max-h-[70vh]">
+                                <div className="space-y-4">
+                                    <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Submission Details</h4>
+                                    <div className="text-sm font-medium text-slate-600 bg-slate-50 p-6 rounded-2xl border border-slate-100">
+                                        {(() => {
+                                            const subData = evaluatingSubmission.data || {};
+                                            if (subData && typeof subData === 'object' && Object.keys(subData).length > 0) {
+                                                const stageConfig = stages.find((st: any) =>
+                                                    st.id === evaluatingSubmission.stage_id || st._id === evaluatingSubmission.stage_id
+                                                );
+                                                const fieldConfigs: Record<string, any> = {};
+                                                if (stageConfig) {
+                                                    const fields = stageConfig.fields || (stageConfig.config?.fields) || [];
+                                                    for (const f of fields) {
+                                                        fieldConfigs[f.id || f.key] = f;
+                                                    }
                                                 }
+                                                const fieldEntries = Object.entries(subData).filter(
+                                                    ([k, v]) => typeof v === 'string' && v.trim()
+                                                );
+                                                return (
+                                                    <div className="divide-y divide-slate-100">
+                                                        {fieldEntries.map(([key, val]) => {
+                                                            const value = val as string;
+                                                            const label = fieldConfigs[key]?.label || key.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+                                                            if (value.startsWith('data:')) {
+                                                                const mime = value.split(';')[0].split(':')[1] || '';
+                                                                const ext = mime.includes('pdf') ? '.pdf' : mime.includes('presentation') ? '.pptx' : mime.includes('image') ? '.png' : '.file';
+                                                                return (
+                                                                    <div key={key} className="py-3 first:pt-0 last:pb-0">
+                                                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">{label}</span>
+                                                                        <button onClick={() => setPreviewAsset({ url: value, filename: 'Asset' + ext, type: mime })}
+                                                                            className="flex items-center gap-2 text-xs font-bold text-purple-600 hover:text-purple-800">
+                                                                            <FileText size={14} /> View {mime.includes('pdf') ? 'PDF' : mime.includes('presentation') ? 'PPT' : 'File'}
+                                                                        </button>
+                                                                    </div>
+                                                                );
+                                                            }
+                                                            if (value.startsWith('http://') || value.startsWith('https://')) {
+                                                                return (
+                                                                    <div key={key} className="py-3 first:pt-0 last:pb-0">
+                                                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">{label}</span>
+                                                                        <a href={value} target="_blank" rel="noreferrer"
+                                                                            className="flex items-center gap-2 text-xs font-bold text-purple-600 hover:text-purple-800">
+                                                                            <ExternalLink size={14} /> Open Link
+                                                                        </a>
+                                                                    </div>
+                                                                );
+                                                            }
+                                                            return (
+                                                                <div key={key} className="py-3 first:pt-0 last:pb-0">
+                                                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">{label}</span>
+                                                                    <p className="text-sm font-medium text-slate-700 whitespace-pre-wrap">{value}</p>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                );
                                             }
-                                            const fieldEntries = Object.entries(subData).filter(
-                                                ([k, v]) => (typeof v === 'string' && v.trim()) || (typeof v === 'object' && v && (v as any)._stored_file)
-                                            );
-                                            return (
-                                                <div className="divide-y divide-slate-100">
-                                                    {fieldEntries.map(([key, value]) => {
-                                                        const label = fieldConfigs[key]?.label || key.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
-                                                        if (typeof value === 'object' && value && (value as any)._stored_file) {
-                                                            const f = value as any;
-                                                            const ext = (f.filename || '').split('.').pop()?.toUpperCase() || 'FILE';
-                                                            const isPdf = (f.mime || '').includes('pdf') || ext === 'PDF';
-                                                            const isPpt = (f.mime || '').includes('presentation') || ext === 'PPT' || ext === 'PPTX';
-                                                            return (
-                                                                <div key={key} className="py-3 first:pt-0 last:pb-0">
-                                                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">{label}</span>
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={() => openStageSubmissionFile(String(evaluatingSubmission._id), key, f.filename)}
-                                                                        className="flex items-center gap-2 text-xs font-bold text-purple-600 hover:text-purple-800"
-                                                                    >
-                                                                        <FileText size={14} /> {isPdf ? 'View PDF' : isPpt ? 'View PPT' : f.filename || 'View File'}
-                                                                    </button>
-                                                                </div>
-                                                            );
-                                                        }
-                                                        if (typeof value === 'string' && value.startsWith('data:')) {
-                                                            const mime = value.split(';')[0].split(':')[1] || '';
-                                                            const ext = mime.includes('pdf') ? '.pdf' : mime.includes('presentation') ? '.pptx' : mime.includes('image') ? '.png' : '.file';
-                                                            return (
-                                                                <div key={key} className="py-3 first:pt-0 last:pb-0">
-                                                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">{label}</span>
-                                                                    <button onClick={() => setPreviewAsset({ url: value, filename: 'Asset' + ext })}
-                                                                        className="flex items-center gap-2 text-xs font-bold text-purple-600 hover:text-purple-800">
-                                                                        <FileText size={14} /> View {mime.includes('pdf') ? 'PDF' : mime.includes('presentation') ? 'PPT' : 'File'}
-                                                                    </button>
-                                                                </div>
-                                                            );
-                                                        }
-                                                        if (typeof value === 'string' && (value.startsWith('http://') || value.startsWith('https://'))) {
-                                                            return (
-                                                                <div key={key} className="py-3 first:pt-0 last:pb-0">
-                                                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">{label}</span>
-                                                                    <a href={value} target="_blank" rel="noreferrer"
-                                                                        className="flex items-center gap-2 text-xs font-bold text-purple-600 hover:text-purple-800">
-                                                                        <ExternalLink size={14} /> Open Link
-                                                                    </a>
-                                                                </div>
-                                                            );
-                                                        }
-                                                        return (
-                                                            <div key={key} className="py-3 first:pt-0 last:pb-0">
-                                                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">{label}</span>
-                                                                <p className="text-sm font-medium text-slate-700 whitespace-pre-wrap">{value}</p>
-                                                            </div>
-                                                        );
-                                                    })}
+                                            return <p className="text-slate-400 italic">No submission data provided</p>;
+                                        })()}
+                                    </div>
+                                </div>
+
+                                <div className="space-y-6">
+                                    <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Scoring Rubric</h4>
+                                    {criteria.length > 0 ? (
+                                        criteria.map((c: any) => (
+                                            <div key={c._id || c.name} className="space-y-3">
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-sm font-black text-slate-800">{c.name}</span>
+                                                    <span className="text-sm font-black text-purple-600">{evaluationScores[c.name] || 0} / {c.max_points}</span>
                                                 </div>
-                                            );
-                                        }
-                                        return <p className="text-slate-400 italic">No submission data provided</p>;
-                                    })()}
+                                                <input
+                                                    type="range"
+                                                    min="0"
+                                                    max={c.max_points}
+                                                    value={evaluationScores[c.name] || 0}
+                                                    onChange={(e) => setEvaluationScores({ ...evaluationScores, [c.name]: parseInt(e.target.value) })}
+                                                    className="w-full h-2 bg-slate-100 rounded-full appearance-none cursor-pointer accent-purple-600"
+                                                />
+                                            </div>
+                                        ))
+                                    ) : (
+                                        <div className="p-6 bg-amber-50 rounded-2xl border border-amber-100">
+                                            <p className="text-xs font-bold text-amber-700">No scoring rubrics defined. Please add criteria in the "Scoring Rubrics" tab first.</p>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="space-y-3">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Feedback & Comments</label>
+                                    <textarea
+                                        value={evaluationComment}
+                                        onChange={(e) => setEvaluationComment(e.target.value)}
+                                        placeholder="Share detailed feedback with the team..."
+                                        className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 focus:bg-white focus:ring-4 focus:ring-purple-50 transition-all h-32 resize-none"
+                                    />
                                 </div>
                             </div>
 
-                            <div className="space-y-6">
-                                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Scoring Rubric</h4>
-                                {criteria.length > 0 ? (
-                                    criteria.map((c: any) => (
-                                        <div key={c._id || c.name} className="space-y-3">
-                                            <div className="flex items-center justify-between">
-                                                <span className="text-sm font-black text-slate-800">{c.name}</span>
-                                                <span className="text-sm font-black text-purple-600">{evaluationScores[c.name] || 0} / {c.max_points}</span>
-                                            </div>
-                                            <input 
-                                                type="range" 
-                                                min="0" 
-                                                max={c.max_points}
-                                                value={evaluationScores[c.name] || 0}
-                                                onChange={(e) => setEvaluationScores({...evaluationScores, [c.name]: parseInt(e.target.value)})}
-                                                className="w-full h-2 bg-slate-100 rounded-full appearance-none cursor-pointer accent-purple-600"
-                                            />
-                                        </div>
-                                    ))
-                                ) : (
-                                    <div className="p-6 bg-amber-50 rounded-2xl border border-amber-100">
-                                        <p className="text-xs font-bold text-amber-700">No scoring rubrics defined. Please add criteria in the "Scoring Rubrics" tab first.</p>
-                                    </div>
-                                )}
+                            <div className="p-8 border-t border-slate-100 bg-slate-50 flex items-center justify-end gap-4">
+                                <button
+                                    onClick={() => setEvaluatingSubmission(null)}
+                                    className="px-8 py-4 text-sm font-black text-slate-400 hover:text-slate-600"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={handleEvaluateSubmission}
+                                    className="px-10 py-4 bg-slate-900 text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-purple-600 transition-all shadow-xl shadow-black/10"
+                                >
+                                    Submit Evaluation
+                                </button>
                             </div>
-
-                            <div className="space-y-3">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Feedback & Comments</label>
-                                <textarea 
-                                    value={evaluationComment}
-                                    onChange={(e) => setEvaluationComment(e.target.value)}
-                                    placeholder="Share detailed feedback with the team..."
-                                    className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 focus:bg-white focus:ring-4 focus:ring-purple-50 transition-all h-32 resize-none"
-                                />
-                            </div>
-                        </div>
-
-                        <div className="p-8 border-t border-slate-100 bg-slate-50 flex items-center justify-end gap-4">
-                            <button 
-                                onClick={() => setEvaluatingSubmission(null)}
-                                className="px-8 py-4 text-sm font-black text-slate-400 hover:text-slate-600"
-                            >
-                                Cancel
-                            </button>
-                            <button 
-                                onClick={handleEvaluateSubmission}
-                                className="px-10 py-4 bg-slate-900 text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-purple-600 transition-all shadow-xl shadow-black/10"
-                            >
-                                Submit Evaluation
-                            </button>
-                        </div>
+                        </motion.div>
                     </motion.div>
-                </motion.div>
-            )}
-        </FramerAnimatePresence>
+                )}
+            </FramerAnimatePresence>
         </div>
     );
 };

@@ -19,15 +19,24 @@ export default defineConfig(({ mode }) => {
     },
     plugins: [react()],
     build: {
-      emptyOutDir: false,
+      emptyOutDir: true,
       chunkSizeWarningLimit: 1000, 
       rollupOptions: {
         output: {
           manualChunks(id) {
-            if (!id.includes('node_modules')) {
-              if (id.includes('CoursePlayer')) return 'chunk-course-player';
-              if (id.includes('OperationLog')) return 'chunk-operation-log';
-              return undefined;
+            if (id.includes('node_modules')) {
+                if (id.includes('react') || id.includes('react-dom') || id.includes('scheduler') || id.includes('object-assign')) return 'vendor_react';
+                if (id.includes('react-router-dom') || id.includes('react-router')) return 'vendor_router';
+                if (id.includes('framer-motion')) return 'vendor_framer-motion';
+                if (id.includes('lucide-react') || id.includes('react-icons')) return 'vendor_icons';
+                if (id.includes('@heroui')) return 'vendor_heroui';
+                if (id.includes('html2pdf.js') || id.includes('html2canvas') || id.includes('jspdf')) return 'vendor_pdf';
+                if (id.includes('pdfjs-dist')) return 'vendor_pdfjs';
+                if (id.includes('react-markdown') || id.includes('remark-gfm') || id.includes('rehype-raw')) return 'vendor_markdown';
+                if (id.includes('lottie-react')) return 'vendor_lottie';
+                if (id.includes('qrcode')) return 'vendor_qrcode';
+                if (id.includes('react-syntax-highlighter')) return 'vendor_syntax';
+                if (id.includes('react-helmet-async')) return 'vendor_helmet';
             }
 
             // Keep react ecosystem together to avoid circular chunk deps

@@ -10,7 +10,6 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useDashboardCache } from '../../contexts/DashboardDataContext';
-import { useInstitutionEvents } from '../../hooks/useInstitutionEvents';
 
 interface Event {
     id: string;
@@ -95,84 +94,10 @@ const FilterDropdown = ({ label, options, value, onChange, onClear }: any) => {
     );
 };
 
-const formatOpportunityDateTime = (raw?: string) => {
-    if (!raw) return { date: '—', time: '' };
-    const d = new Date(raw);
-    if (Number.isNaN(d.getTime())) return { date: String(raw), time: '' };
-    return {
-        date: d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }),
-        time: `${d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' })} IST`,
-    };
-};
-
-const deriveEventStatus = (e: any): string => {
-    const now = Date.now();
-    const start = new Date(e.start_date || e.startDate || e.eventStartDate || '').getTime();
-    const end = new Date(e.end_date || e.endDate || e.eventEndDate || e.registrationDeadline || e.deadline || '').getTime();
-    const rawStatus = (e.status || 'Draft').toLowerCase();
-    if (rawStatus === 'draft') return 'Draft';
-    if (!Number.isNaN(end) && end < now) return 'Completed';
-    if (!Number.isNaN(start) && start > now) return 'Upcoming';
-    if (rawStatus === 'completed') return 'Completed';
-    if (rawStatus === 'upcoming') return 'Upcoming';
-    return 'Live';
-};
-
-const deriveRegistrationStatus = (e: any): 'Open' | 'Close' => {
-    const end = new Date(e.end_date || e.endDate || e.registrationDeadline || e.deadline || '').getTime();
-    if (!Number.isNaN(end) && end < Date.now()) return 'Close';
-    const reg = String(e.registration_status || e.registrationStatus || '').toLowerCase();
-    if (reg === 'close' || reg === 'closed') return 'Close';
-    return 'Open';
-};
-
-const mapSummaryToEvents = (data: any[]) => data
-    .filter((e: any) => e.category !== 'Job' && e.category !== 'Internship')
-    .map((e: any) => {
-        const displayStatus = deriveEventStatus(e);
-        const updatedAt = e.updated_at || e.updatedAt || e.created_at || e.createdAt;
-        let lastSaved = 'Unknown';
-        if (updatedAt) {
-            const diff = Date.now() - new Date(updatedAt).getTime();
-            const mins = Math.floor(diff / 60000);
-            const hrs = Math.floor(diff / 3600000);
-            const days = Math.floor(diff / 86400000);
-            if (mins < 1) lastSaved = 'Just now';
-            else if (mins < 60) lastSaved = `${mins}m ago`;
-            else if (hrs < 24) lastSaved = `${hrs}h ago`;
-            else lastSaved = `${days}d ago`;
-        }
-        return {
-            id: e._id,
-            name: e.title,
-            status: displayStatus,
-            type: e.category || 'Event',
-            startDate: e.start_date || e.startDate || e.eventStartDate || '',
-            endDate: e.end_date || e.endDate || e.eventEndDate || e.registrationDeadline || e.deadline || '',
-            participants: e.participant_count || 0,
-            registrations: String(e.participant_count || 0),
-            candidate: '',
-            image: e.logo_url || e.image_url || '',
-            visibility: (e.visibility === 'Private' ? 'Private' : 'Public') as 'Public' | 'Private',
-            registrationStatus: deriveRegistrationStatus(e),
-            lastSaved,
-            category: e.category,
-        };
-    });
-
 const OpportunitiesManagement: React.FC<OpportunitiesManagementProps> = ({ institutionId, onViewEvent, onCreateEvent }) => {
-    const { setCacheData } = useDashboardCache();
-    const { events: summaryEvents, loading, refresh } = useInstitutionEvents(institutionId);
-    const [tick, setTick] = useState(0);
-    const events = React.useMemo(() => mapSummaryToEvents(summaryEvents), [summaryEvents, tick]);
-
-    useEffect(() => {
-        const interval = window.setInterval(() => {
-            setTick((t) => t + 1);
-            refresh();
-        }, 60000);
-        return () => window.clearInterval(interval);
-    }, [refresh]);
+    const { cache, setCacheData, isLoading, setLoading } = useDashboardCache();
+    const events = cache['institutionOpportunities'] || [];
+    const loading = isLoading['institutionOpportunities'] ?? true;
     const [searchQuery, setSearchQuery] = useState('');
     const [typeTab, setTypeTab] = useState('All');
     const [statusFilter, setStatusFilter] = useState('');
@@ -227,10 +152,116 @@ const OpportunitiesManagement: React.FC<OpportunitiesManagementProps> = ({ insti
     };
 
     useEffect(() => {
-        if (events.length > 0) {
-            setCacheData('institutionOpportunities', events);
-        }
-    }, [events, setCacheData]);
+        const fetchEvents = async () => {
+            if (!institutionId) return;
+            try {
+                setLoading('institutionOpportunities', true);
+                console.log(`DEBUG: Fetching events for institution: ${institutionId}`);
+                const response = await fetch(`${API_BASE_URL}/api/v1/institution/events/${institutionId}`, { headers: { ...authHeaders() } });
+                
+                if (!response.ok) {
+                    throw new Error(`API Error - Status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                // Safety check to ensure data is an array
+                const eventsArray = Array.isArray(data) ? data : [];
+                
+                const filteredData = eventsArray.filter((e: any) => 
+                    e.category !== 'Job' && e.category !== 'Internship'
+                );
+
+                const mappedEvents = filteredData.map((e: any) => {
+                    const rawStatus = (e.status || 'Draft').toLowerCase();
+                    let displayStatus = 'Draft';
+                    if (rawStatus === 'live' || rawStatus === 'published' || rawStatus === 'active') displayStatus = 'Live';
+                    else if (rawStatus === 'completed') displayStatus = 'Completed';
+                    else if (rawStatus === 'upcoming') displayStatus = 'Upcoming';
+
+                    // Dynamic relative time from updated_at or created_at
+                    const lastUpdateTime = e.updated_at || e.updatedAt || e.created_at || e.createdAt;
+                    let lastSaved = 'Unknown';
+                    if (lastUpdateTime) {
+                        const diff = Date.now() - new Date(lastUpdateTime).getTime();
+                        const mins = Math.floor(diff / 60000);
+                        const hrs = Math.floor(diff / 3600000);
+                        const days = Math.floor(diff / 86400000);
+                        if (days > 0) lastSaved = `${days} day${days > 1 ? 's' : ''} ago`;
+                        else if (hrs > 0) lastSaved = `${hrs} hour${hrs > 1 ? 's' : ''} ago`;
+                        else if (mins > 0) lastSaved = `${mins} minute${mins > 1 ? 's' : ''} ago`;
+                        else lastSaved = 'Just now';
+                    }
+
+                    const rawCat = (e.category || e.type || '') as string;
+                    const typeLabel = /hackathon/i.test(rawCat) ? 'Hackathons' : rawCat;
+                    
+                    // Robust Date Resolution logic matching backend _resolve_event_dates
+                    const fd = e.festivalData || {};
+                    const form = e.formData || {};
+                    const stages = e.stages || [];
+                    const firstStage = stages[0] || {};
+
+                    let startRaw = e.start_date || e.startDate || e.eventStartDate || e.registrationStartDate || fd.startDate || form.startDate || firstStage.start_date || firstStage.startDate;
+                    let endRaw = e.end_date || e.endDate || e.eventEndDate || e.registrationDeadline || e.deadline || fd.endDate || form.endDate || firstStage.end_date || firstStage.endDate || firstStage.deadline;
+
+                    // If stages exist, try to find absolute min/max
+                    if (stages.length > 0) {
+                        const allStarts = stages.map((s: any) => s.start_date || s.startDate).filter(Boolean).map((d: any) => new Date(d).getTime());
+                        if (allStarts.length > 0) {
+                            const minStart = new Date(Math.min(...allStarts));
+                            if (!startRaw || minStart < new Date(startRaw)) startRaw = minStart.toISOString();
+                        }
+                        const allEnds = stages.map((s: any) => s.end_date || s.endDate || s.deadline).filter(Boolean).map((d: any) => new Date(d).getTime());
+                        if (allEnds.length > 0) {
+                            const maxEnd = new Date(Math.max(...allEnds));
+                            if (!endRaw || maxEnd > new Date(endRaw)) endRaw = maxEnd.toISOString();
+                        }
+                    }
+
+                    const formatTableDate = (d: any) => {
+                        if (!d) return 'N/A';
+                        const dateObj = new Date(d);
+                        if (isNaN(dateObj.getTime())) return 'N/A';
+                        
+                        const datePart = dateObj.toLocaleString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' });
+                        const timePart = dateObj.toLocaleString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+                        return `${datePart}\n${timePart} IST`;
+                    };
+
+                    return {
+                        id: e._id,
+                        name: e.title,
+                        organisation: e.organisation || e.organization || e.organisation_name || '',
+                        status: displayStatus,
+                        type: typeLabel,
+                        startDate: formatTableDate(startRaw),
+                        endDate: formatTableDate(endRaw),
+                        participants: e.participant_count || 0,
+                        registrations: e.participant_count || 0,
+                        candidate: (e.participant_count || 0) > 0 ? `${e.participant_count} registered` : '—',
+                        image: e.image_url || '',
+                        visibility: e.visibility || 'Unknown',
+                        registrationStatus: e.registration_status || 'Unknown',
+                        lastSaved,
+                        category: rawCat
+                    };
+                });
+                
+                setCacheData('institutionOpportunities', mappedEvents);
+            } catch (err) {
+                try { console.error("Dynamic opportunities fetch error:", err instanceof Error ? err.message : String(err)); } catch (_) {}
+            } finally {
+                setLoading('institutionOpportunities', false);
+            }
+        };
+        // Fetch immediately when component mounts (e.g. tab switch)
+        fetchEvents();
+        // Also listen for custom refresh event from sibling components (e.g. after edit save)
+        const handleRefresh = () => fetchEvents();
+        window.addEventListener('opportunity-list-refresh', handleRefresh);
+        return () => window.removeEventListener('opportunity-list-refresh', handleRefresh);
+    }, [institutionId, setCacheData, setLoading]);
 
     const filteredEvents = events.filter(event => {
         const matchesSearch = event.name.toLowerCase().includes(searchQuery.toLowerCase());
@@ -381,26 +412,22 @@ const OpportunitiesManagement: React.FC<OpportunitiesManagementProps> = ({ insti
                                                 </span>
                                             </td>
                                             <td className="px-6 py-8 text-center">
-                                                {(() => {
-                                                    const { date, time } = formatOpportunityDateTime(event.startDate);
-                                                    return (
-                                                        <div className="space-y-0.5">
-                                                            <p className="text-sm font-black text-slate-700">{date}</p>
-                                                            {time && <p className="text-[9px] font-bold text-slate-400">{time}</p>}
-                                                        </div>
-                                                    );
-                                                })()}
+                                                <div className="space-y-0.5">
+                                                    {event.startDate.split('\n').map((line, i) => (
+                                                        <p key={i} className={i === 0 ? "text-[13px] font-black text-slate-700" : "text-[10px] font-bold text-slate-400 uppercase tracking-tight"}>
+                                                            {line}
+                                                        </p>
+                                                    ))}
+                                                </div>
                                             </td>
                                             <td className="px-6 py-8 text-center">
-                                                {(() => {
-                                                    const { date, time } = formatOpportunityDateTime(event.endDate);
-                                                    return (
-                                                        <div className="space-y-0.5">
-                                                            <p className="text-sm font-black text-slate-700">{date}</p>
-                                                            {time && <p className="text-[9px] font-bold text-slate-400">{time}</p>}
-                                                        </div>
-                                                    );
-                                                })()}
+                                                <div className="space-y-0.5">
+                                                    {event.endDate.split('\n').map((line, i) => (
+                                                        <p key={i} className={i === 0 ? "text-[13px] font-black text-slate-700" : "text-[10px] font-bold text-slate-400 uppercase tracking-tight"}>
+                                                            {line}
+                                                        </p>
+                                                    ))}
+                                                </div>
                                             </td>
                                             <td className="px-6 py-8 text-center text-sm font-bold text-slate-400">{event.candidate}</td>
                                             <td className="px-6 py-8 text-center text-sm font-black text-slate-700">{event.registrations}</td>

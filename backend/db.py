@@ -78,6 +78,7 @@ class DatabaseManager:
             try:
                 # Initialize core indexes
                 await self.ensure_indexes()
+                logger.info("Database connected and indexes ensured")
             except Exception as e:
                 logger.warning(f"Index creation warning: {e}")
 
@@ -125,6 +126,11 @@ class DatabaseManager:
             await self.db.institutions.create_index("email", unique=True, sparse=True)
             
             # ── Events (supports institution dashboard queries) ──
+            try:
+                await self.db.events.drop_index("event_id_1")
+            except:
+                pass
+            await self.db.events.create_index("event_id", unique=True, sparse=True)
             await self.db.events.create_index([("institution_id", 1), ("status", 1)])
             await self.db.events.create_index([("institution_id", 1), ("created_at", -1)])
             await self.db.events.create_index("status")
@@ -133,6 +139,8 @@ class DatabaseManager:
             await self.db.participants.create_index(
                 [("event_id", 1), ("user_id", 1)], unique=True
             )
+            await self.db.participants.create_index("event_id")
+            await self.db.participants.create_index("team_id")
             await self.db.participants.create_index(
                 [("institution_id", 1), ("event_id", 1)]
             )
@@ -149,6 +157,7 @@ class DatabaseManager:
             # ── Teams ──
             await self.db.teams.create_index([("event_id", 1), ("team_name", 1)], unique=True)
             await self.db.teams.create_index([("event_id", 1)])
+            await self.db.teams.create_index("team_leader_id")
             await self.db.teams.create_index([("invite_code", 1)], sparse=True, unique=True)
             
             # ── Submissions (stage-level lookups) ──
@@ -162,12 +171,13 @@ class DatabaseManager:
             )
             await self.db.submission_data.create_index([("event_id", 1), ("stage_id", 1)])
             
-            # ── Submissions (event-level performance) ──
-            await self.db.submissions.create_index([("event_id", 1)])
-            
-            # ── Scores (event-level performance) ──
-            await self.db.scores.create_index([("event_id", 1)])
-            await self.db.scores.create_index([("submission_id", 1)])
+            # ── Submissions & Scores Indexes ──
+            await self.db.submissions.create_index("event_id")
+            await self.db.submissions.create_index([("event_id", 1), ("status", 1)])
+            await self.db.scores.create_index("event_id")
+            await self.db.scores.create_index("submission_id")
+            await self.db.scores.create_index([("event_id", 1), ("submission_id", 1)])
+            await self.db.scores.create_index([("event_id", 1), ("team_id", 1)])
             
             # ── Notifications ──
             await self.db.notifications.create_index([("user_id", 1), ("is_read", 1)])
@@ -179,6 +189,8 @@ class DatabaseManager:
             
             # ── Leaderboard ──
             await self.db.leaderboard.create_index([("event_id", 1), ("score", -1)])
+            # Compound index for sorted leaderboard queries (filter by event, sort by rank)
+            await self.db.leaderboard.create_index([("event_id", 1), ("rank", 1)])
             
             # ── Opportunities (student-facing dashboard) ──
             await self.db.opportunities.create_index([("institution_id", 1), ("status", 1)])
@@ -228,6 +240,23 @@ class DatabaseManager:
             # ── Announcements & Audit ──
             await self.db.announcements.create_index([("event_id", 1), ("created_at", -1)])
             await self.db.announcement_audit.create_index([("announcement_id", 1), ("recipient", 1)])
+
+            # ── Opportunity Reviews (Performance) ──
+            await self.db.opportunity_reviews.create_index("opportunity_id")
+            await self.db.opportunity_reviews.create_index([("opportunity_id", 1), ("created_at", -1)])
+
+            # ── Hackathon Management (Problem Statements & Team Selection) ──
+            await self.db.hackathon_problems.create_index([("institution_id", 1), ("status", 1)])
+            await self.db.hackathon_problems.create_index("problem_id", unique=True)
+            await self.db.hackathon_selections.create_index([("institution_id", 1)])
+            await self.db.hackathon_selections.create_index([("event_id", 1)])
+            await self.db.hackathon_submissions.create_index([("hackathonId", 1)])
+            await self.db.hackathon_submissions.create_index([("event_id", 1)])
+            await self.db.hackathon_submissions.create_index([("submittedBy", 1)])
+            await self.db.hackathon_submissions.create_index([("teamId", 1)])
+            
+            # ── Hackathon Event Config (Critical for Plan Rules N+1) ──
+            await self.db.hackathon_event_config.create_index([("institution_id", 1), ("key", 1)])
             
             logger.info("All production indexes ensured successfully")
         except Exception as e:

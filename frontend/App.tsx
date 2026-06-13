@@ -71,6 +71,7 @@ const StudentDiscounts = lazy(() => import('./pages/StudentDiscounts'));
 const StudentSchemes = lazy(() => import('./pages/StudentSchemes'));
 const FeaturePreview = lazy(() => import('./pages/FeaturePreview'));
 const InstitutionDashboard = lazy(() => import('./pages/institution-dashboard/InstitutionDashboard'));
+const AchievementRegistry = lazy(() => import('./pages/institution-dashboard/AchievementRegistry'));
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword'));
 const VerifyEmail = lazy(() => import('./pages/VerifyEmail'));
@@ -583,17 +584,19 @@ const AppWrapper: React.FC = () => {
         <AuthProvider>
           <DashboardDataProvider>
             <ScrollToTop />
-            {showSplash ? (
-              <SplashScreen duration={2000} onFinish={handleSplashFinish} />
-            ) : (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.6 }}
-              >
-                <App />
-              </motion.div>
-            )}
+            <Suspense fallback={null}>
+              {showSplash ? (
+                <SplashScreen duration={2000} onFinish={handleSplashFinish} />
+              ) : (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ duration: 0.6 }}
+                >
+                  <App />
+                </motion.div>
+              )}
+            </Suspense>
           </DashboardDataProvider>
         </AuthProvider>
       </Router>

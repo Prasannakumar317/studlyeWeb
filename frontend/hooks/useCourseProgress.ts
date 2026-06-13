@@ -3,9 +3,21 @@
 // Extracted from pages/CoursePlayer.tsx while preserving UI.
 
 import { useState, useEffect, useCallback } from 'react';
-import type { Module, LessonType } from '../pages/CoursePlayer'; // Types defined in CoursePlayer
-import { CURRICULUM_DATA } from '../data/curriculumData';
+// Removed circular import from ../pages/CoursePlayer
 import { API_BASE_URL } from '../apiConfig';
+
+// Define local interface to break circular dependency
+interface Lesson {
+  type: 'overview' | 'text' | 'theory' | 'practice_quiz' | 'quiz' | 'graded_quiz';
+  title: string;
+}
+
+interface Module {
+  _id: string;
+  title: string;
+  order_index: number;
+  lessons: Lesson[];
+}
 
 interface UseCourseProgressProps {
   userId: string | undefined;

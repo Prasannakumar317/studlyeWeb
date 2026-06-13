@@ -50,6 +50,8 @@ async def _create_opportunity_for_event(event_data: dict, opportunities_col):
             "description": event_data.get("description", ""),
             "location": ", ".join(_loc_parts),
             "deadline": event_data.get("registrationDeadline") or event_data.get("registration_deadline") or datetime.utcnow(),
+            "eventStartDate": event_data.get("eventStartDate") or event_data.get("startDate") or event_data.get("start_date") or "",
+            "eventEndDate": event_data.get("eventEndDate") or event_data.get("endDate") or event_data.get("end_date") or "",
             "applicantsCount": 0,
             "createdBy": str(event_data.get("institution_id", "")),
             "institution_id": str(event_data.get("institution_id", "")),
@@ -59,6 +61,9 @@ async def _create_opportunity_for_event(event_data: dict, opportunities_col):
             "banner_url": event_data.get("banner_url") or event_data.get("banner") or "",
             "updated_at": datetime.utcnow()
         }
+        
+        if "stages" in event_data:
+            opp_data["stages"] = event_data["stages"]
         
         if existing_opp:
             # Update existing opportunity
@@ -173,7 +178,11 @@ async def update_event(event_id: str, update_data: dict):
         {"_id": ObjectId(event_id)},
         {"$set": update_data}
     )
-    return await get_event_by_id(event_id)
+    updated_event = await get_event_by_id(event_id)
+    if updated_event and str(updated_event.get("status", "")).upper() in ("LIVE", "PUBLISHED", "ACTIVE", "UPCOMING"):
+        from db import opportunities_col
+        asyncio.create_task(_create_opportunity_for_event(updated_event, opportunities_col))
+    return updated_event
 
 async def delete_event(event_id: str):
     # Soft-delete: mark event as DELETED and hide from students/institution views

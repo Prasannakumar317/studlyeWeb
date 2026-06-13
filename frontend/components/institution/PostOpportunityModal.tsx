@@ -528,6 +528,9 @@ const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({ isOpen, onC
 
                 if (response.ok) {
                     alert(eventId ? "Opportunity Updated Successfully!" : "Opportunity Created Successfully!");
+                    if (typeof window !== 'undefined') {
+                        window.dispatchEvent(new CustomEvent('opportunity-list-refresh'));
+                    }
                     onClose();
                 } else {
                     const errorData = await response.json();
@@ -655,6 +658,9 @@ const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({ isOpen, onC
 
             if (response.ok) {
                 alert("Draft Saved Successfully!");
+                if (typeof window !== 'undefined') {
+                    window.dispatchEvent(new CustomEvent('opportunity-list-refresh'));
+                }
                 onClose();
                 window.location.reload();
             } else {

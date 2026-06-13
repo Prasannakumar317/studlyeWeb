@@ -40,6 +40,7 @@ import {
     ShieldCheck,
     HelpCircle,
     AlertCircle,
+    Copy,
 } from 'lucide-react';
 import { getStatusById, getStatusColor, getStatusLabel } from '../../utils/calendarStatuses';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -49,7 +50,7 @@ import SectionRenderer from '../../components/SectionRenderer';
 import { useRegistrationState } from '../../utils/useRegistrationState';
 import { API_BASE_URL, authHeaders } from '../../apiConfig';
 import { useAuth } from '../../AuthContext';
-import StageSubmissionsPanel from '../../components/opportunities/StageSubmissionsPanel';
+import SubmissionForm from '../../components/opportunities/SubmissionForm';
 import AvatarImage from '../../components/AvatarImage';
 import TeamManager from '../../components/opportunities/TeamManager';
 import {
@@ -181,7 +182,7 @@ const OpportunityDetails: React.FC = () => {
         }
 
         if (allowed.length === 0) {
-            return ['.pdf', '.ppt', '.pptx', '.doc', '.docx', '.png', '.jpg', '.jpeg', '.zip'];
+            return [];
         }
         return allowed;
     };
@@ -273,11 +274,8 @@ const OpportunityDetails: React.FC = () => {
         return 'active';
     };
 
-    const isDedicatedTab = activeTab === 'submissions' || activeTab === 'team';
-    const needsRegistrationForm = !isDedicatedTab;
-
     useEffect(() => {
-        if (!id || isDedicatedTab) return;
+        if (!id) return;
         // Fetch live stats
         fetch(`${API_BASE_URL}/api/hackathons/events/${id}/stats`)
             .then(res => res.json())
@@ -310,7 +308,7 @@ const OpportunityDetails: React.FC = () => {
         } else {
             setEventLeaderboard([]);
         }
-    }, [id, isDedicatedTab, opportunity?.title, opportunity?.name, opportunity?.location, opportunity?.venue, opportunity?.opportunity_title, opportunity?.opportunityName]);
+    }, [id, opportunity?.title, opportunity?.name, opportunity?.location, opportunity?.venue, opportunity?.opportunity_title, opportunity?.opportunityName]);
 
     // Fetch user profile photo & gender for sidebar
     useEffect(() => {
@@ -378,7 +376,7 @@ const OpportunityDetails: React.FC = () => {
     }, [id]);
 
     useEffect(() => {
-        if (!opportunity?._id || isDedicatedTab) return;
+        if (!opportunity?._id) return;
         const t = opportunity.type || 'General';
         fetch(`${API_BASE_URL}/api/opportunities?type=${encodeURIComponent(t)}`)
             .then((r) => r.json())
@@ -387,31 +385,27 @@ const OpportunityDetails: React.FC = () => {
                 setRelated(list.filter((o: any) => String(o._id) !== String(id)).slice(0, 6));
             })
             .catch(() => setRelated([]));
-    }, [opportunity?._id, opportunity?.type, id, isDedicatedTab]);
+    }, [opportunity?._id, opportunity?.type, id]);
 
     useEffect(() => {
         const fetchData = async () => {
             try {
-                const statsParam = isDedicatedTab ? '' : '&include_process_stats=true';
                 const oppUrl = user?.user_id
-                    ? `${API_BASE_URL}/api/opportunities/${id}?applicant_user_id=${encodeURIComponent(user.user_id)}${statsParam}`
-                    : `${API_BASE_URL}/api/opportunities/${id}${isDedicatedTab ? '' : '?include_process_stats=true'}`;
-                const fetchReviews = !isDedicatedTab;
+                    ? `${API_BASE_URL}/api/opportunities/${id}?applicant_user_id=${encodeURIComponent(user.user_id)}`
+                    : `${API_BASE_URL}/api/opportunities/${id}`;
                 const [oppRes, appRes, subRes, reviewsRes] = await Promise.all([
                     fetch(oppUrl, { headers: { ...authHeaders() } }),
-                    user && !isDedicatedTab
+                    user
                         ? fetch(`${API_BASE_URL}/api/opportunities/me/applications`, {
                               headers: { ...authHeaders() },
                           })
                         : Promise.resolve({ ok: false, json: async () => [] } as Response),
-                    user && !isDedicatedTab
+                    user
                         ? fetch(`${API_BASE_URL}/api/hackathons/my-submission/${id}`, {
                               headers: { ...authHeaders() },
                           })
                         : Promise.resolve({ ok: false, json: async () => ({ hasSubmitted: false }) } as Response),
-                    fetchReviews
-                        ? fetch(`${API_BASE_URL}/api/opportunities/${id}/reviews`)
-                        : Promise.resolve({ ok: false, json: async () => ({ reviews: [] }) } as Response),
+                    fetch(`${API_BASE_URL}/api/opportunities/${id}/reviews`)
                 ]);
 
                 const opp = await oppRes.json();
@@ -439,12 +433,7 @@ const OpportunityDetails: React.FC = () => {
                 if (!oppRes.ok) {
                     setOpportunity(null);
                 } else {
-                    const needsExternalLink =
-                        !isDedicatedTab &&
-                        opp.event_link_id &&
-                        !opp.external_registration_link &&
-                        !opp.externalRegistrationLink;
-                    if (needsExternalLink) {
+                    if (opp.event_link_id) {
                         try {
                             const evRes = await fetch(`${API_BASE_URL}/api/v1/events/${opp.event_link_id}`, { headers: { ...authHeaders() } });
                             if (evRes.ok) {
@@ -490,7 +479,12 @@ const OpportunityDetails: React.FC = () => {
         };
 
         fetchData();
-    }, [id, user?.user_id, isDedicatedTab]);
+        
+        // Set up periodic refresh to check for stage updates
+        const refreshInterval = setInterval(fetchData, 30000); // Refresh every 30 seconds
+        
+        return () => clearInterval(refreshInterval);
+    }, [id, user?.user_id]);
 
     // Keep the visible tab in sync with the `tab` URL parameter so Back/Forward preserves tab state
     useEffect(() => {
@@ -504,7 +498,7 @@ const OpportunityDetails: React.FC = () => {
     }, [location.search]);
 
     useEffect(() => {
-        if (!user || !eventId || !needsRegistrationForm) return;
+        if (!user || !eventId) return;
         
         setLoadingFields(true);
         fetch(`${API_BASE_URL}/api/v1/registration/events/${eventId}/form`, {
@@ -554,7 +548,7 @@ const OpportunityDetails: React.FC = () => {
         })
         .catch(err => console.error("Error loading registration form config:", err))
         .finally(() => setLoadingFields(false));
-    }, [user, eventId, needsRegistrationForm]);
+    }, [user, eventId, isApplied]);
 
     useEffect(() => {
         if (!formConfig?.fields_definitions || !userProfileData) return;
@@ -1046,6 +1040,60 @@ const OpportunityDetails: React.FC = () => {
         ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     };
 
+    const checkStageAuthorization = (s: any) => {
+        const participantStage = myApplication?.current_stage || '';
+        const regStatusStrLower = (effectiveRegStatus || 'NOT_REGISTERED').toLowerCase();
+        
+        const stages = opportunity?.stages || [];
+        const stageIndex = stages.findIndex((st: any) => st.id === s.id || st.name === s.name);
+        const participantStageIndex = stages.findIndex((st: any) => st.id === participantStage || st.name === participantStage);
+        
+        const stageVisibility = String(s?.visibility || s?.config?.visibility || '').toLowerCase().trim();
+        const requiresShortlist = stageVisibility.includes('shortlist');
+        const pType = String(opportunity?.participationType || opportunity?.participation_type || '').toLowerCase();
+        const isSoloEvent = pType === 'individual' || pType === 'both';
+        const isSoloParticipant = !myApplication?.team_id || myApplication?.is_solo_participant === true;
+
+        // Base status-based authorization
+        let isAuthorized = false;
+        if (!requiresShortlist) {
+            isAuthorized = regStatusStrLower !== 'not_registered' && regStatusStrLower !== 'rejected';
+        } else {
+            const allowedStatuses = ['approved', 'shortlisted', 'accepted'];
+            if (isSoloEvent && isSoloParticipant) {
+                allowedStatuses.push('registered');
+            }
+            isAuthorized = allowedStatuses.includes(regStatusStrLower);
+        }
+
+        // Progression-based authorization (Strict)
+        // 1. Must be the current stage or a previous stage
+        // Removed `if (isAuthorized && participantStageIndex < stageIndex)` to allow status and depends_on to govern unlocks correctly
+
+        // 2. Depends on rules (if provided by DB)
+        const dependsOn = s.depends_on || s.config?.depends_on || [];
+        if (isAuthorized && Array.isArray(dependsOn) && dependsOn.length > 0) {
+            for (const depId of dependsOn) {
+                const depStage = stages.find((st: any) => st.id === depId || st.name === depId);
+                if (depStage) {
+                    // Check if dependency is completed
+                    const depIdx = stages.indexOf(depStage);
+                    if (participantStageIndex <= depIdx) {
+                        isAuthorized = false;
+                        break;
+                    }
+                } else {
+                    // Orphan dependency ID: fail closed for safety
+                    isAuthorized = false;
+                    break;
+                }
+            }
+        }
+
+        return isAuthorized;
+    };
+
+
     const handleStageClick = (s: any) => {
         const stype = s.type?.toUpperCase();
         const sname = s.name?.toUpperCase() || '';
@@ -1110,43 +1158,7 @@ const OpportunityDetails: React.FC = () => {
             return;
         }
 
-        // Determine stage progression dynamically based on admin rules
-        const participantStage = myApplication?.current_stage || '';
-        const regStatusStrLower = regStatusStr.toLowerCase();
-        
-        const stages = opportunity?.stages || [];
-        const stageIndex = stages.findIndex((st: any) => st.name === s.name);
-        const participantStageIndex = stages.findIndex((st: any) => st.name === participantStage);
-        
-        console.log(`[DEBUG] Locking Check: Stage: ${s.name} (Idx: ${stageIndex}), Participant Stage: ${participantStage} (Idx: ${participantStageIndex}), RegStatus: ${regStatusStrLower}`);
-
-        // Dynamically determine required status from stage visibility
-        const stageVisibility = String(s?.visibility || s?.config?.visibility || '').toLowerCase().trim();
-        const requiresShortlist = stageVisibility.includes('shortlist');
-        const pType = String(opportunity?.participationType || opportunity?.participation_type || '').toLowerCase();
-        const isSoloEvent = pType === 'individual' || pType === 'both';
-        const isSoloParticipant = !myApplication?.team_id || myApplication?.is_solo_participant === true;
-
-        let isAuthorized = false;
-        if (!requiresShortlist) {
-            // Public stages: any registered participant can access
-            isAuthorized = regStatusStrLower !== 'not_registered' && regStatusStrLower !== 'rejected';
-        } else {
-            // Shortlisted-only stages: require approved/shortlisted/accepted
-            const allowedStatuses = ['approved', 'shortlisted', 'accepted'];
-            if (isSoloEvent && isSoloParticipant) {
-                allowedStatuses.push('registered');
-            }
-            isAuthorized = allowedStatuses.includes(regStatusStrLower);
-        }
-        // Also unlock if participant has progressed past this stage
-        if (!isAuthorized && participantStageIndex >= stageIndex - 1) {
-            isAuthorized = true;
-        }
-
-        console.log(`[DEBUG] Locking Check: Stage: ${s.name}, visibility: ${stageVisibility}, requiresShortlist: ${requiresShortlist}, RegStatus: ${regStatusStrLower}, Authorized: ${isAuthorized}`);
-
-        if (!isAuthorized) {
+        if (!checkStageAuthorization(s)) {
             alert(`This stage is locked. You must be approved or shortlisted to proceed.`);
             return;
         }
@@ -1265,8 +1277,10 @@ const OpportunityDetails: React.FC = () => {
     const submittableStages = stagesList.filter((s: any) => {
         const st = String(s?.type || '').toUpperCase();
         const sn = String(s?.name || '').toLowerCase();
-        return st !== 'REGISTRATION' && st !== 'TEAM_FORMATION'
-            && !sn.includes('regist') && !sn.includes('team formation');
+        // Strict filter: only SUBMISSION type stages or those explicitly marked for submission
+        return (st === 'SUBMISSION' || sn.includes('submission')) && 
+               st !== 'REGISTRATION' && st !== 'TEAM_FORMATION' &&
+               !sn.includes('regist') && !sn.includes('team formation');
     });
     const hasSubmittableStages = submittableStages.length > 0;
     
@@ -1429,15 +1443,53 @@ const OpportunityDetails: React.FC = () => {
                     </div>
                 ) : activeTab === 'submissions' && opportunity ? (
                     <div className="my-8">
-                        {eventId ? (
-                            <StageSubmissionsPanel
-                                eventId={eventId}
-                                participationType={opportunity?.participationType || opportunity?.participation_type}
-                                stagesFromOpportunity={opportunity?.stages}
-                            />
+                        {eventId && submittableStages.length > 0 ? (
+                            <div className="space-y-8">
+                                {submittableStages.map((stage: any, idx: number) => {
+                                    // Use the hardened database-driven authorization check
+                                    const isStageAuthorized = checkStageAuthorization(stage);
+
+
+                                    return (
+                                        <div key={stage.id || idx} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                                            <div className="p-5 border-b border-slate-100 flex items-center justify-between">
+                                                <div>
+                                                    <h3 className="text-lg font-black text-slate-900">{stage.name || stage.type || `Stage ${idx + 1}`}</h3>
+                                                    {stage.description && (
+                                                        <p className="text-sm text-slate-500 mt-0.5">{stage.description}</p>
+                                                    )}
+                                                </div>
+                                                <span className={`text-xs font-black uppercase tracking-wider px-3 py-1 rounded-full ${
+                                                    isStageAuthorized
+                                                        ? 'bg-emerald-50 text-emerald-700'
+                                                        : 'bg-amber-50 text-amber-700'
+                                                }`}>
+                                                    {isStageAuthorized ? 'Open' : 'Locked'}
+                                                </span>
+                                            </div>
+                                            <div className="p-5">
+                                                {isStageAuthorized ? (
+                                                    <SubmissionForm eventId={eventId} stage={stage} participationType={opportunity?.participationType} />
+                                                ) : (
+                                                    <div className="bg-slate-50 rounded-xl p-6 text-center">
+                                                        <p className="text-sm font-bold text-slate-500">
+                                                            This stage is locked. You must be shortlisted or approved to proceed.
+                                                        </p>
+                                                        {stage.depends_on && stage.depends_on.length > 0 && (
+                                                            <p className="text-xs text-slate-400 mt-1">
+                                                                Complete the previous stages to unlock this one.
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
                         ) : (
                             <div className="bg-white p-6 rounded-lg shadow-md text-slate-600">
-                                Event data is still loading. Please refresh the page.
+                                No submission stages configured for this event yet.
                             </div>
                         )}
                     </div>
@@ -1827,9 +1879,15 @@ const OpportunityDetails: React.FC = () => {
                                             }
 
                                             const stageStatus = computeStageStatus(s);
-                                            const isReg = (String(s.type || '').toUpperCase() === 'REGISTRATION') || (String(s.name || '').toUpperCase().includes('REGISTER'));
-                                            const isSubmissionStage = (String(s.type || '').toUpperCase() === 'SUBMISSION') || (String(s.name || '').toUpperCase().includes('SUBMISSION'));
-                                            const canAct = (stageStatus === 'active') && (isApplied || isReg || isSubmissionStage || effectiveRegStatus === 'APPROVED');
+                                            const isAuthorized = checkStageAuthorization(s);
+                                            
+                                            // Stage is interactive only if it is the current active stage and authorized
+                                            const canAct = (stageStatus === 'active') && isAuthorized;
+                                            
+                                            // Stage is visible only if it is authorized or already past the start date
+                                            const isVisible = isAuthorized || (s.startDate && new Date(s.startDate) <= new Date());
+                                            
+                                            if (!isVisible) return null;
 
                                             const start = s.startDate || s.start_date;
                                             const end = s.endDate || s.end_date;
@@ -1877,16 +1935,17 @@ const OpportunityDetails: React.FC = () => {
 
                                                     {/* Right content */}
                                                     <div className={`flex-1 bg-white border rounded-2xl p-5 shadow-sm transition-all ${
-                                                        canAct ? 'hover:border-[#6C3BFF]/40 hover:shadow-md cursor-pointer' : 'opacity-80'
+                                                        canAct ? 'hover:border-[#6C3BFF]/40 hover:shadow-md cursor-pointer' : 'opacity-60 cursor-not-allowed'
                                                     }`}
-                                                        onClick={canAct ? () => handleStageClick(s) : undefined}
+                                                        onClick={canAct ? () => handleStageClick(s) : () => !isAuthorized && alert("This stage is locked. Please complete previous stages to unlock.")}
                                                         aria-disabled={!canAct}
                                                     >
                                                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                                                             <div className="flex-1">
                                                                 <div className="flex items-center gap-2 mb-1">
                                                                     <h3 className="font-black text-slate-900 text-lg">{s.name || `Stage ${i + 1}`}</h3>
-                                                                    {stageStatus === 'active' && <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest bg-purple-100 text-purple-700">Live</span>}
+                                                                    {!isAuthorized && <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest bg-rose-100 text-rose-700">Locked</span>}
+                                                                    {stageStatus === 'active' && isAuthorized && <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest bg-purple-100 text-purple-700">Live</span>}
                                                                     {stageStatus === 'completed' && <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest bg-emerald-100 text-emerald-700">Completed</span>}
                                                                     {stageStatus === 'results' && <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest bg-amber-100 text-amber-700">Results</span>}
                                                                 </div>
@@ -3062,14 +3121,14 @@ const OpportunityDetails: React.FC = () => {
                                                                     <div className="text-[10px] text-slate-500 font-bold mt-1">Use an invite code</div>
                                                                 </button>
                                                             </div>
-                                                            
+
                                                             {teamAction === 'create' && (
                                                                 <div className="space-y-2 mt-4">
                                                                     <label className="text-xs font-bold text-slate-700">Team Name <span className="text-rose-500">*</span></label>
                                                                     <input type="text" value={teamName} onChange={e => setTeamName(e.target.value)} placeholder="e.g. Code Ninjas" required className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all" />
                                                                 </div>
                                                             )}
-                                                            
+
                                                             {teamAction === 'join' && (
                                                                 <div className="space-y-2 mt-4">
                                                                     <label className="text-xs font-bold text-slate-700">Team Invite Code <span className="text-rose-500">*</span></label>
@@ -3078,7 +3137,8 @@ const OpportunityDetails: React.FC = () => {
                                                             )}
                                                         </div>
                                                     ) : (
-                                                    currentStep.fields.map((field: any) => {
+                                                        (currentStep.fields || []).map((field: any) => {
+
                                                         const isEmail = field.id === 'email';
                                                         const isPrefilled = Boolean(field.prefilled_value);
                                                         const allowedExts = field.type === 'file' ? getFieldAllowedExtensions(field) : [];
