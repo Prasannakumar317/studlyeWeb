@@ -73,13 +73,26 @@ async def post_opportunity(data: dict = Body(...), user: dict = Depends(get_auth
 @router.get("/")
 async def list_opportunities(
     type: Optional[str] = Query(None),
-    institution_id: Optional[str] = Query(None)
+    institution_id: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+    user: Optional[dict] = Depends(get_auth_user_optional)
 ):
     """API to list opportunities with optional filters."""
     try:
         filters = {}
         if type: filters["type"] = type
         if institution_id: filters["institution_id"] = institution_id
+        
+        role = str(user.get("role") or "").lower() if user else ""
+        user_inst_id = user.get("institution_id") if user else None
+        
+        if status == "all" or (role in ("institution", "startup") and institution_id and str(institution_id) == str(user_inst_id)):
+            filters["status"] = "all"
+        elif status:
+            filters["status"] = status.strip().lower()
+        else:
+            filters["status"] = "active"
+            
         return await get_all_opportunities(filters)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

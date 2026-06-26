@@ -429,7 +429,11 @@ async def get_all_opportunities(filters: dict = None) -> List[dict]:
     try:
         # Performance Optimized: Removed automated sync loop which caused 30s+ latency.
         # Regular Fetching
-        query = {"status": "active"}
+        query = {}
+        status_filter = filters.get("status", "active") if filters else "active"
+        if status_filter != "all":
+            query["status"] = status_filter
+            
         if filters:
             if filters.get("type"):
                 query["type"] = filters["type"]
@@ -447,7 +451,12 @@ async def get_all_opportunities(filters: dict = None) -> List[dict]:
         async for doc in cursor:
             doc["_id"] = str(doc["_id"])
             opportunities.append(doc)
-        filtered = await _filter_public_opportunities(opportunities)
+            
+        if status_filter != "all":
+            filtered = await _filter_public_opportunities(opportunities)
+        else:
+            filtered = opportunities
+            
         return await _hydrate_opportunity_list_from_events(filtered)
     except Exception as e:
         print(f"[CRITICAL] get_all_opportunities failed: {e}")

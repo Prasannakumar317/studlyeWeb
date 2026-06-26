@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
     Plus, Search, Edit2, Trash2, Calendar, MapPin, DollarSign, 
-    X, AlertTriangle, Archive, CheckCircle, Loader2, Sparkles, Briefcase
+    X, AlertTriangle, Archive, CheckCircle, Loader2, Sparkles, Briefcase, Coins
 } from 'lucide-react';
 import { API_BASE_URL, authHeaders } from '../../apiConfig';
 
@@ -276,7 +276,7 @@ const StartupOpportunities: React.FC<StartupOpportunitiesProps> = ({ institution
     return (
         <div className="space-y-8 font-sans pb-10 text-left relative">
             {/* Ambient Background Mesh */}
-            <div className="absolute top-0 right-0 -w-72 -h-72 bg-[#EC4899]/5 rounded-full blur-[120px] pointer-events-none -z-10" />
+            <div className="absolute top-0 right-0 w-72 h-72 bg-[#EC4899]/5 rounded-full blur-[120px] pointer-events-none -z-10" />
 
             {/* Asymmetrical Magazine Header */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-gradient-to-r from-white/40 to-transparent p-6 rounded-3xl border border-white/20 backdrop-blur-sm">
@@ -300,6 +300,46 @@ const StartupOpportunities: React.FC<StartupOpportunitiesProps> = ({ institution
                     <Plus size={16} />
                     Post New Opportunity
                 </motion.button>
+            </div>
+
+            {/* Stats Overview Dashboard */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+                <div className="bg-white/60 backdrop-blur-xl p-6 rounded-[2rem] border border-white/60 shadow-[0_8px_30px_rgb(0,0,0,0.02)] flex items-center justify-between group hover:border-pink-200 transition-all duration-300">
+                    <div className="space-y-1">
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Postings</span>
+                        <div className="text-2xl font-black text-slate-900">{opportunities.length}</div>
+                    </div>
+                    <div className="w-12 h-12 bg-pink-50 text-pink-500 rounded-2xl flex items-center justify-center border border-pink-100/50 shadow-inner group-hover:scale-110 transition-transform">
+                        <Briefcase size={20} />
+                    </div>
+                </div>
+
+                <div className="bg-white/60 backdrop-blur-xl p-6 rounded-[2rem] border border-white/60 shadow-[0_8px_30px_rgb(0,0,0,0.02)] flex items-center justify-between group hover:border-emerald-200 transition-all duration-300">
+                    <div className="space-y-1">
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                            <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
+                            Active Listings
+                        </span>
+                        <div className="text-2xl font-black text-slate-900">
+                            {opportunities.filter(o => o.status === 'active').length}
+                        </div>
+                    </div>
+                    <div className="w-12 h-12 bg-emerald-50 text-emerald-500 rounded-2xl flex items-center justify-center border border-emerald-100/50 shadow-inner group-hover:scale-110 transition-transform">
+                        <CheckCircle size={20} />
+                    </div>
+                </div>
+
+                <div className="bg-white/60 backdrop-blur-xl p-6 rounded-[2rem] border border-white/60 shadow-[0_8px_30px_rgb(0,0,0,0.02)] flex items-center justify-between group hover:border-indigo-200 transition-all duration-300">
+                    <div className="space-y-1">
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Drafts & Closed</span>
+                        <div className="text-2xl font-black text-slate-900">
+                            {opportunities.filter(o => o.status !== 'active').length}
+                        </div>
+                    </div>
+                    <div className="w-12 h-12 bg-indigo-50 text-indigo-500 rounded-2xl flex items-center justify-center border border-indigo-100/50 shadow-inner group-hover:scale-110 transition-transform">
+                        <Archive size={20} />
+                    </div>
+                </div>
             </div>
 
             {/* Glass Filter Section */}
@@ -395,10 +435,13 @@ const StartupOpportunities: React.FC<StartupOpportunitiesProps> = ({ institution
                             </div>
 
                             <div className="border-t border-slate-100/80 mt-6 pt-4 flex items-center justify-between">
-                                <div className="flex flex-wrap items-center gap-3 text-slate-400 text-[10px] font-bold">
-                                    <span className="flex items-center gap-1"><MapPin size={12} className="text-pink-500/80" /> {opp.locationType}</span>
+                                <div className="flex flex-wrap items-center gap-3 text-slate-400 text-[10px] font-black">
+                                    <span className="flex items-center gap-1 bg-pink-500/5 text-pink-700 px-2.5 py-1 rounded-xl border border-pink-100/30"><MapPin size={12} /> {opp.locationType}</span>
                                     {opp.salaryMin && (
-                                        <span className="flex items-center gap-0.5 text-slate-700 bg-slate-50 px-2 py-0.5 rounded-md border border-slate-100"><DollarSign size={11} className="text-emerald-500" /> {opp.salaryMin} - {opp.salaryMax}</span>
+                                        <span className="flex items-center gap-1 bg-emerald-500/10 text-emerald-700 px-2.5 py-1 rounded-xl border border-emerald-100/30"><Coins size={12} /> {opp.salaryMin} {opp.salaryMax ? `- ${opp.salaryMax}` : ''}</span>
+                                    )}
+                                    {opp.deadline && (
+                                        <span className="flex items-center gap-1 bg-indigo-500/5 text-indigo-700 px-2.5 py-1 rounded-xl border border-indigo-100/30"><Calendar size={12} /> {new Date(opp.deadline).toLocaleDateString(undefined, {month: 'short', day: 'numeric', year: 'numeric'})}</span>
                                     )}
                                 </div>
 
