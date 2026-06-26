@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { API_BASE_URL } from './apiConfig';
 
-export type UserRole = 'super_admin' | 'admin' | 'mentor' | 'hiring_partner' | 'student' | 'institution' | 'judge';
+export type UserRole = 'super_admin' | 'admin' | 'mentor' | 'hiring_partner' | 'student' | 'institution' | 'judge' | 'startup';
 
 interface User {
     email: string;
@@ -43,7 +43,8 @@ const USER_ROLES: readonly UserRole[] = [
     'hiring_partner',
     'student',
     'institution',
-    'judge'
+    'judge',
+    'startup'
 ];
 
 const validateRole = (role: unknown): UserRole | null => {

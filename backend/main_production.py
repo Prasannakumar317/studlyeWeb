@@ -423,7 +423,21 @@ def escape_regex(s: str) -> str:
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
-    return {"status": "ok", "timestamp": datetime.utcnow().isoformat()}
+    db_status = "unavailable"
+    try:
+        if getattr(db, "is_mock", False):
+            db_status = "mock"
+        elif db.client is not None:
+            await db.client.admin.command("ping")
+            db_status = "connected"
+    except Exception:
+        db_status = "unavailable"
+
+    return {
+        "status": "ok",
+        "timestamp": datetime.utcnow().isoformat(),
+        "database": db_status
+    }
 
 
 # Password hashing context (initialized once)

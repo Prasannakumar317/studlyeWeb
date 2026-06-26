@@ -58,6 +58,7 @@ const MyCourses = lazy(() => import('./pages/MyCourses'));
 const CareerOnboarding = lazy(() => import('./pages/CareerOnboarding'));
 const CoursesOverview = lazy(() => import('./pages/CoursesOverview'));
 const PublicProfile = lazy(() => import('./pages/PublicProfile'));
+const PublicStartupProfile = lazy(() => import('./pages/PublicStartupProfile'));
 const TrackDetail = lazy(() => import('./pages/TrackDetail'));
 const EnrollmentFlow = lazy(() => import('./pages/EnrollmentFlow'));
 const StackPage = lazy(() => import('./pages/StackPage'));
@@ -72,6 +73,8 @@ const StudentDiscounts = lazy(() => import('./pages/StudentDiscounts'));
 const StudentSchemes = lazy(() => import('./pages/StudentSchemes'));
 const FeaturePreview = lazy(() => import('./pages/FeaturePreview'));
 const InstitutionDashboard = lazy(() => import('./pages/institution-dashboard/InstitutionDashboard'));
+const StartupDashboard = lazy(() => import('./pages/StartupDashboard'));
+const StartupIdeaValidator = lazy(() => import('./pages/startup-dashboard/StartupIdeaValidator'));
 const AchievementRegistry = lazy(() => import('./pages/institution-dashboard/AchievementRegistry'));
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword'));
@@ -102,6 +105,23 @@ const AdminCompanyManagement = lazy(() => import('./pages/admin/companies/Compan
 const AdminPaymentManagement = lazy(() => import('./pages/admin/payments/PaymentManagement'));
 const AdminResumeManagement = lazy(() => import('./pages/admin/resumes/ResumeManagement'));
 const AdminAuditLogs = lazy(() => import('./pages/admin/audit/AuditLogs'));
+
+// Discover Platform Lazy Imports
+const DiscoverHub = lazy(() => import('./pages/discover/DiscoverHub'));
+const DiscoverStartups = lazy(() => import('./pages/discover/DiscoverStartups'));
+const DiscoverFounders = lazy(() => import('./pages/discover/DiscoverFounders'));
+const DiscoverIndustries = lazy(() => import('./pages/discover/DiscoverIndustries'));
+const DiscoverInvestors = lazy(() => import('./pages/discover/DiscoverInvestors'));
+const DiscoverJobs = lazy(() => import('./pages/discover/DiscoverJobs'));
+const DiscoverEvents = lazy(() => import('./pages/discover/DiscoverEvents'));
+const DiscoverFunding = lazy(() => import('./pages/discover/DiscoverFunding'));
+const DiscoverCommunities = lazy(() => import('./pages/discover/DiscoverCommunities'));
+const DiscoverCollections = lazy(() => import('./pages/discover/DiscoverCollections'));
+const DiscoverTechnologies = lazy(() => import('./pages/discover/DiscoverTechnologies'));
+const DiscoverNews = lazy(() => import('./pages/discover/DiscoverNews'));
+const DiscoverLearning = lazy(() => import('./pages/discover/DiscoverLearning'));
+const DiscoverEcosystems = lazy(() => import('./pages/discover/DiscoverEcosystems'));
+
 
 const ScrollToTop = () => {
   const { pathname } = useLocation();
@@ -197,9 +217,19 @@ const App: React.FC = () => {
       if (role === 'institution') {
         if (
           !pathname.startsWith('/institution-dashboard') &&
-          (pathname.startsWith('/dashboard') || pathname === '/')
+          (pathname.startsWith('/dashboard') || pathname === '/' || pathname.startsWith('/startup-dashboard'))
         ) {
           navigate('/institution-dashboard', { replace: true });
+        }
+      }
+
+      // Startup Redirect
+      else if (role === 'startup') {
+        if (
+          !pathname.startsWith('/startup-dashboard') &&
+          (pathname.startsWith('/dashboard') || pathname === '/' || pathname.startsWith('/institution-dashboard'))
+        ) {
+          navigate('/startup-dashboard', { replace: true });
         }
       }
 
@@ -227,7 +257,8 @@ const App: React.FC = () => {
 
         if (
           pathname.startsWith('/institution-dashboard') ||
-          pathname.startsWith('/judge-portal')
+          pathname.startsWith('/judge-portal') ||
+          pathname.startsWith('/startup-dashboard')
         ) {
           navigate('/dashboard/learner', {
             replace: true,
@@ -284,6 +315,7 @@ const App: React.FC = () => {
           !isOpportunityDetail &&
           !pathname.startsWith('/evaluate/') &&
           !pathname.startsWith('/institution-dashboard') &&
+          !pathname.startsWith('/startup-dashboard') &&
           !pathname.startsWith('/judge-portal');
 
         return showNav && <Navigation />;
@@ -463,8 +495,27 @@ const App: React.FC = () => {
             <Route path="/dashboard/learner" element={<ProtectedRoute><DashboardHome /></ProtectedRoute>} />
             <Route path="/dashboard/profile" element={<ProtectedRoute><LearnerDashboard /></ProtectedRoute>} />
             <Route path="/profile/:userId" element={<PublicProfile />} />
+            <Route path="/startup/:institutionId" element={<PublicStartupProfile />} />
             <Route path="/dashboard/partner" element={<ProtectedRoute><PartnerDashboard /></ProtectedRoute>} />
             <Route path="/dashboard/my-courses" element={<ProtectedRoute><MyCourses /></ProtectedRoute>} />
+
+            {/* Discover Hub */}
+            <Route path="/discover" element={<ProtectedRoute><DiscoverHub /></ProtectedRoute>} />
+            <Route path="/discover/startups" element={<ProtectedRoute><DiscoverStartups /></ProtectedRoute>} />
+            <Route path="/discover/founders" element={<ProtectedRoute><DiscoverFounders /></ProtectedRoute>} />
+            <Route path="/discover/industries" element={<ProtectedRoute><DiscoverIndustries /></ProtectedRoute>} />
+            <Route path="/discover/investors" element={<ProtectedRoute><DiscoverInvestors /></ProtectedRoute>} />
+            <Route path="/discover/jobs" element={<ProtectedRoute><DiscoverJobs /></ProtectedRoute>} />
+            <Route path="/discover/events" element={<ProtectedRoute><DiscoverEvents /></ProtectedRoute>} />
+            <Route path="/discover/funding" element={<ProtectedRoute><DiscoverFunding /></ProtectedRoute>} />
+            <Route path="/discover/community" element={<ProtectedRoute><DiscoverCommunities /></ProtectedRoute>} />
+            <Route path="/discover/communities" element={<ProtectedRoute><DiscoverCommunities /></ProtectedRoute>} />
+            <Route path="/discover/collections" element={<ProtectedRoute><DiscoverCollections /></ProtectedRoute>} />
+            <Route path="/discover/technologies" element={<ProtectedRoute><DiscoverTechnologies /></ProtectedRoute>} />
+            <Route path="/discover/news" element={<ProtectedRoute><DiscoverNews /></ProtectedRoute>} />
+            <Route path="/discover/learning" element={<ProtectedRoute><DiscoverLearning /></ProtectedRoute>} />
+            <Route path="/discover/ecosystems" element={<ProtectedRoute><DiscoverEcosystems /></ProtectedRoute>} />
+
 
             {/* Opportunities */}
             <Route path="/opportunities" element={<ProtectedRoute><OpportunitiesList /></ProtectedRoute>} />
@@ -484,6 +535,10 @@ const App: React.FC = () => {
 
             {/* Institution */}
             <Route path="/institution-dashboard/*" element={<ProtectedRoute><InstitutionDashboard /></ProtectedRoute>} />
+
+            {/* Startup Dashboard */}
+            <Route path="/startup-dashboard/*" element={<ProtectedRoute><StartupDashboard /></ProtectedRoute>} />
+            <Route path="/startup-validator" element={<ProtectedRoute><StartupIdeaValidator /></ProtectedRoute>} />
 
             {/* Judge */}
             <Route path="/judge-portal/*" element={<ProtectedRoute><JudgePortalLayout /></ProtectedRoute>} />

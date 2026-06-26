@@ -23,6 +23,7 @@ const EventsManagement = lazy(() => import('./EventsManagement'));
 const OpportunitiesManagement = lazy(() => import('./OpportunitiesManagement'));
 const EventDetails = lazy(() => import('./EventDetails'));
 const SettingsPage = lazy(() => import('./SettingsPage'));
+const StartupProfile = lazy(() => import('../startup-dashboard/StartupProfile'));
 const SubmissionList = lazy(() => import('./submissions/SubmissionList'));
 const JudgeManagement = lazy(() => import('./JudgeManagement'));
 const ParticipantsManagement = lazy(() => import('./ParticipantsManagement'));
@@ -84,6 +85,8 @@ const InstitutionDashboard: React.FC = () => {
             setActiveTab('downloads');
         } else if (path.includes('/certificates')) {
             setActiveTab('certificates');
+        } else if (path.includes('/startup-profile')) {
+            setActiveTab('startup-profile');
         } else if (path.includes('/settings')) {
             setActiveTab('settings');
         }
@@ -244,6 +247,8 @@ const InstitutionDashboard: React.FC = () => {
                 return <DownloadsPage institutionId={institutionId} onNavigate={setActiveTab} />;
             case 'certificates':
                 return <CertificatesPage institutionId={institutionId} />;
+            case 'startup-profile':
+                return <StartupProfile institutionId={institutionId} onProfileUpdate={handleProfileUpdate} />;
             case 'settings':
                 return <SettingsPage institutionId={institutionId} onProfileUpdate={handleProfileUpdate} />;
             case 'dashboard':

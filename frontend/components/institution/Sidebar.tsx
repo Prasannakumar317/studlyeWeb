@@ -23,7 +23,8 @@ import {
     UserCheck,
     Trophy,
     BarChart3,
-    Award
+    Award,
+    Rocket
 } from 'lucide-react';
 
 const sidebarItems = [
@@ -37,6 +38,7 @@ const sidebarItems = [
     { id: 'analytics', label: 'Reports & Analytics', icon: BarChart3 },
     { id: 'downloads', label: 'Downloads', icon: Download },
     { id: 'certificates', label: 'Certificates', icon: Award },
+    { id: 'startup-profile', label: 'Startup Profile', icon: Rocket },
     { id: 'settings', label: 'Settings', icon: Settings },
 ];
 

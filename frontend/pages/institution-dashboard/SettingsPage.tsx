@@ -29,7 +29,8 @@ import {
     HelpCircle,
     ChevronDown,
     ChevronUp,
-    ShieldAlert
+    ShieldAlert,
+    Rocket
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useLocation } from 'react-router-dom';

@@ -19,14 +19,14 @@ except ImportError:
 USE_REDIS = False
 redis_client = None
 
-if REDIS_AVAILABLE:
+if REDIS_AVAILABLE and os.getenv("REDIS_HOST"):
     try:
         redis_client = redis.Redis(
-            host=os.getenv("REDIS_HOST", "localhost"),
+            host=os.getenv("REDIS_HOST", "127.0.0.1"),
             port=int(os.getenv("REDIS_PORT", 6379)),
             db=int(os.getenv("REDIS_DB", 0)),
-            socket_connect_timeout=2,
-            socket_timeout=2,
+            socket_connect_timeout=1,
+            socket_timeout=1,
             decode_responses=True
         )
         redis_client.ping()

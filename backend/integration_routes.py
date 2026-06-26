@@ -23,7 +23,6 @@ def get_cache(key: str):
 
 def set_cache(key: str, data: any):
     _cache[key] = (data, datetime.now())
-from main import get_current_user, require_role
 from routes.auth import get_current_user, require_role
 from services.email_service import (
     send_notification_email,
@@ -615,6 +614,83 @@ async def get_institution_profile(institution_id: str, user: dict = Depends(get_
         raise HTTPException(status_code=404, detail="Institution profile not found. Please complete institution setup.")
     
     # Clean ID
+    if "_id" in profile:
+        profile["_id"] = str(profile["_id"])
+    return profile
+
+@router.post("/startup-profile")
+async def create_startup_profile(profile: dict, user: dict = Depends(get_auth_user)):
+    """Saves a new startup profile to MongoDB. Requires authentication."""
+    from db import startups_col
+    
+    inst_id = str(user.get("institution_id") or "").strip()
+    if not inst_id:
+        raise HTTPException(status_code=400, detail="User profile does not have an institution_id")
+    
+    if not profile.get("company_name") or not str(profile.get("company_name", "")).strip():
+        raise HTTPException(status_code=400, detail="Company name is required")
+    
+    # Find existing startup profile
+    existing = await startups_col.find_one({"institution_id": inst_id})
+    
+    # Preserve existing images if missing in request
+    if existing:
+        if not profile.get("logo_url") and existing.get("logo_url"):
+            profile["logo_url"] = existing["logo_url"]
+        if not profile.get("hero_image_url") and existing.get("hero_image_url"):
+            profile["hero_image_url"] = existing["hero_image_url"]
+    
+    # Remove MongoDB's internal _id to avoid immutable field errors
+    if "_id" in profile:
+        del profile["_id"]
+    
+    profile["institution_id"] = inst_id
+    profile["updated_at"] = datetime.utcnow()
+    
+    # Remove fields that are None
+    for key in list(profile.keys()):
+        if key in profile and profile[key] is None:
+            del profile[key]
+    
+    if existing:
+        await startups_col.update_one(
+            {"_id": existing["_id"]},
+            {"$set": profile}
+        )
+    else:
+        try:
+            await startups_col.insert_one(profile)
+        except Exception as e:
+            if "duplicate key" in str(e).lower():
+                raise HTTPException(status_code=409, detail="A startup profile already exists for this institution")
+            raise HTTPException(status_code=500, detail=f"Failed to save profile: {str(e)}")
+    
+    return {"status": "success"}
+
+@router.get("/startup-profile/{institution_id}")
+async def get_startup_profile(institution_id: str, user: dict = Depends(get_auth_user)):
+    """Retrieves the startup profile for an institution (authenticated only)."""
+    from db import startups_col
+    
+    assert_institution_scope(institution_id, user)
+    
+    profile = await startups_col.find_one({"institution_id": institution_id})
+    if not profile:
+        raise HTTPException(status_code=404, detail="Startup profile not found")
+    
+    if "_id" in profile:
+        profile["_id"] = str(profile["_id"])
+    return profile
+
+@router.get("/startup-profile-public/{institution_id}")
+async def get_startup_profile_public(institution_id: str):
+    """Retrieves the startup profile for public viewing (no authentication required)."""
+    from db import startups_col
+    
+    profile = await startups_col.find_one({"institution_id": institution_id})
+    if not profile:
+        raise HTTPException(status_code=404, detail="Startup profile not found")
+    
     if "_id" in profile:
         profile["_id"] = str(profile["_id"])
     return profile
@@ -1301,7 +1377,9 @@ async def get_all_institution_participants(institution_id: str, user: dict = Dep
             "event_title": opp_title,
             "status": app.get("status", "pending"),
             "registered_at": app.get("applied_at"),
-            "resume_url": app.get("resume_url") # Added resume support
+            "resume_url": app.get("resume_url"),
+            "opportunity_id": str(app.get("opportunity_id") or ""),
+            "user_id": str(app.get("user_id") or "")
         })
         
     return results

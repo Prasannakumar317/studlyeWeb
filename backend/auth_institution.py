@@ -70,9 +70,9 @@ def assert_institution_scope(institution_id: Optional[str], user: dict) -> None:
     if _is_admin(role):
         return
 
-    if str(role).lower() != "institution":
-        logger.warning(f"assert_institution_scope failed: user role is '{role}', expected 'institution'")
-        raise HTTPException(status_code=403, detail="Institution access required")
+    if str(role).lower() not in ("institution", "startup"):
+        logger.warning(f"assert_institution_scope failed: user role is '{role}', expected 'institution' or 'startup'")
+        raise HTTPException(status_code=403, detail="Institution or Startup access required")
 
     user_inst_id = str(user.get("institution_id") or "")
     if user_inst_id != str(institution_id):

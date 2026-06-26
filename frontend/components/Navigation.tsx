@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { API_BASE_URL } from '../apiConfig';
-import { ShoppingCart, User, BookOpen, Briefcase, LogOut } from 'lucide-react';
+import { ShoppingCart, User, BookOpen, Briefcase, LogOut, LayoutDashboard, Settings, Rocket } from 'lucide-react';
 import AvatarImage from './AvatarImage';
 
 const StudlyfLogo = ({ className = "h-8 sm:h-10" }: { className?: string }) => (
@@ -213,6 +213,12 @@ const Navigation: React.FC = () => {
                 >
                   OPPORTUNITIES
                 </Link>
+                <Link
+                  to="/discover"
+                  className="flex items-center transition-all h-full uppercase tracking-[0.22em] font-bold text-[10px] text-white/80 hover:text-white"
+                >
+                  DISCOVER
+                </Link>
               </div>
             </div>
 
@@ -282,38 +288,77 @@ const Navigation: React.FC = () => {
                                 Member Center
                               </span>
                               
-                              <Link
-                                to="/dashboard/profile"
-                                onClick={() => setIsUserDropdownOpen(false)}
-                                className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-600 hover:text-[#7C3AED] hover:bg-[#7C3AED]/5 transition-all text-sm font-semibold group"
-                              >
-                                <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-slate-50 group-hover:bg-white group-hover:shadow-sm text-slate-400 group-hover:text-[#7C3AED] transition-all">
-                                  <User className="w-4 h-4" />
-                                </span>
-                                My Profile
-                              </Link>
+                              {role === 'institution' || role === 'startup' ? (
+                                <>
+                                  <Link
+                                    to={role === 'startup' ? "/startup-dashboard" : "/institution-dashboard"}
+                                    onClick={() => setIsUserDropdownOpen(false)}
+                                    className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-600 hover:text-[#7C3AED] hover:bg-[#7C3AED]/5 transition-all text-sm font-semibold group"
+                                  >
+                                    <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-slate-50 group-hover:bg-white group-hover:shadow-sm text-slate-400 group-hover:text-[#7C3AED] transition-all">
+                                      <LayoutDashboard className="w-4 h-4" />
+                                    </span>
+                                    Dashboard
+                                  </Link>
 
-                              <Link
-                                to="/dashboard/my-courses"
-                                onClick={() => setIsUserDropdownOpen(false)}
-                                className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-600 hover:text-[#7C3AED] hover:bg-[#7C3AED]/5 transition-all text-sm font-semibold group"
-                              >
-                                <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-slate-50 group-hover:bg-white group-hover:shadow-sm text-slate-400 group-hover:text-[#7C3AED] transition-all">
-                                  <BookOpen className="w-4 h-4" />
-                                </span>
-                                My Courses
-                              </Link>
+                                  <Link
+                                    to={role === 'startup' ? "/startup-dashboard/profile" : "/institution-dashboard/startup-profile"}
+                                    onClick={() => setIsUserDropdownOpen(false)}
+                                    className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-600 hover:text-[#7C3AED] hover:bg-[#7C3AED]/5 transition-all text-sm font-semibold group"
+                                  >
+                                    <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-slate-50 group-hover:bg-white group-hover:shadow-sm text-slate-400 group-hover:text-[#7C3AED] transition-all">
+                                      <Rocket className="w-4 h-4" />
+                                    </span>
+                                    Startup Profile
+                                  </Link>
 
-                              <Link
-                                to="/opportunities/my-applications"
-                                onClick={() => setIsUserDropdownOpen(false)}
-                                className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-600 hover:text-[#7C3AED] hover:bg-[#7C3AED]/5 transition-all text-sm font-semibold group"
-                              >
-                                <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-slate-50 group-hover:bg-white group-hover:shadow-sm text-slate-400 group-hover:text-[#7C3AED] transition-all">
-                                  <Briefcase className="w-4 h-4" />
-                                </span>
-                                My Applications
-                              </Link>
+                                  <Link
+                                    to={role === 'startup' ? "/startup-dashboard/settings" : "/institution-dashboard/settings"}
+                                    onClick={() => setIsUserDropdownOpen(false)}
+                                    className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-600 hover:text-[#7C3AED] hover:bg-[#7C3AED]/5 transition-all text-sm font-semibold group"
+                                  >
+                                    <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-slate-50 group-hover:bg-white group-hover:shadow-sm text-slate-400 group-hover:text-[#7C3AED] transition-all">
+                                      <Settings className="w-4 h-4" />
+                                    </span>
+                                    Settings
+                                  </Link>
+                                </>
+                              ) : (
+                                <>
+                                  <Link
+                                    to="/dashboard/profile"
+                                    onClick={() => setIsUserDropdownOpen(false)}
+                                    className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-600 hover:text-[#7C3AED] hover:bg-[#7C3AED]/5 transition-all text-sm font-semibold group"
+                                  >
+                                    <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-slate-50 group-hover:bg-white group-hover:shadow-sm text-slate-400 group-hover:text-[#7C3AED] transition-all">
+                                      <User className="w-4 h-4" />
+                                    </span>
+                                    My Profile
+                                  </Link>
+
+                                  <Link
+                                    to="/dashboard/my-courses"
+                                    onClick={() => setIsUserDropdownOpen(false)}
+                                    className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-600 hover:text-[#7C3AED] hover:bg-[#7C3AED]/5 transition-all text-sm font-semibold group"
+                                  >
+                                    <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-slate-50 group-hover:bg-white group-hover:shadow-sm text-slate-400 group-hover:text-[#7C3AED] transition-all">
+                                      <BookOpen className="w-4 h-4" />
+                                    </span>
+                                    My Courses
+                                  </Link>
+
+                                  <Link
+                                    to="/opportunities/my-applications"
+                                    onClick={() => setIsUserDropdownOpen(false)}
+                                    className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-600 hover:text-[#7C3AED] hover:bg-[#7C3AED]/5 transition-all text-sm font-semibold group"
+                                  >
+                                    <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-slate-50 group-hover:bg-white group-hover:shadow-sm text-slate-400 group-hover:text-[#7C3AED] transition-all">
+                                      <Briefcase className="w-4 h-4" />
+                                    </span>
+                                    My Applications
+                                  </Link>
+                                </>
+                              )}
                             </div>
                           </div>
 
@@ -512,6 +557,20 @@ const Navigation: React.FC = () => {
                           <div>
                             <p className="text-sm font-bold text-white uppercase tracking-wider">STUDOTT</p>
                             <p className="text-[10px] text-white/40">Student Streaming Platform</p>
+                          </div>
+                        </Link>
+
+                        <Link
+                          to="/discover"
+                          onClick={() => setMobileMenuOpen(false)}
+                          className="flex items-center gap-4 p-4 bg-white/5 rounded-2xl border border-white/5 hover:border-[#7C3AED]/30 transition-all hover:bg-[#7C3AED]/10 group text-left"
+                        >
+                          <div className="w-10 h-10 rounded-xl bg-[#7C3AED]/20 flex items-center justify-center text-[#A78BFA]">
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                          </div>
+                          <div>
+                            <p className="text-sm font-bold text-white uppercase tracking-wider">DISCOVER</p>
+                            <p className="text-[10px] text-white/40">Immersive Startup Hub</p>
                           </div>
                         </Link>
                       </div>

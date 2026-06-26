@@ -1,4 +1,5 @@
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorGridFSBucket
+import inspect
 import os
 import certifi
 import logging
@@ -7,8 +8,135 @@ from dotenv import load_dotenv
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("db_service")
 
+try:
+    import mongomock
+    MONGOMOCK_AVAILABLE = True
+except ImportError:
+    MONGOMOCK_AVAILABLE = False
+
 # Load from root directory .env
 load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env'))
+print("MONGO_URL =", os.getenv("MONGO_URL"))
+print("DB_NAME =", os.getenv("DB_NAME"))
+
+class AsyncMockCursor:
+    def __init__(self, cursor):
+        self._cursor = cursor
+        self._iterator = None
+
+    async def to_list(self, length=None):
+        results = list(self._cursor)
+        if length is None:
+            return results
+        return results[:length]
+
+    def sort(self, *args, **kwargs):
+        try:
+            self._cursor = self._cursor.sort(*args, **kwargs)
+        except Exception:
+            pass
+        return self
+
+    def limit(self, n):
+        try:
+            self._cursor = self._cursor.limit(n)
+        except Exception:
+            pass
+        return self
+
+    def skip(self, n):
+        try:
+            self._cursor = self._cursor.skip(n)
+        except Exception:
+            pass
+        return self
+
+    def __aiter__(self):
+        self._iterator = iter(self._cursor)
+        return self
+
+    async def __anext__(self):
+        try:
+            return next(self._iterator)
+        except StopIteration:
+            raise StopAsyncIteration
+
+    def __iter__(self):
+        return iter(self._cursor)
+
+class AsyncMockCollection:
+    def __init__(self, collection):
+        self._collection = collection
+
+    def __getattr__(self, name):
+        attr = getattr(self._collection, name)
+        if not callable(attr):
+            return attr
+
+        if name in {"find", "aggregate"}:
+            def wrapper(*args, **kwargs):
+                return AsyncMockCursor(attr(*args, **kwargs))
+            return wrapper
+
+        async def async_wrapper(*args, **kwargs):
+            result = attr(*args, **kwargs)
+            if inspect.isawaitable(result):
+                result = await result
+            else:
+                result = result
+
+            # Auto-save changes in development mock database
+            if name in {"insert_one", "insert_many", "update_one", "update_many", "delete_one", "delete_many", "replace_one", "find_one_and_update", "find_one_and_delete"}:
+                try:
+                    db.save_mock_data()
+                except Exception:
+                    pass
+
+            return result
+
+        return async_wrapper
+
+
+class AsyncMockDatabase:
+    def __init__(self, database):
+        self._database = database
+
+    def __getitem__(self, name: str):
+        return AsyncMockCollection(self._database[name])
+
+    def __getattr__(self, name: str):
+        return self.__getitem__(name)
+
+    async def command(self, command_name, *args, **kwargs):
+        return self._database.command(command_name, *args, **kwargs)
+
+    def list_collection_names(self, *args, **kwargs):
+        return self._database.list_collection_names(*args, **kwargs)
+
+    def __repr__(self):
+        return f"<AsyncMockDatabase {self._database.name}>"
+
+class CollectionProxy:
+    def __init__(self, manager, collection_name: str):
+        self._manager = manager
+        self._name = collection_name
+
+    def _resolve(self):
+        if self._manager.db is None:
+            raise RuntimeError(
+                f"MongoDB is not configured. Cannot use collection '{self._name}' in development mode."
+            )
+
+        collection = self._manager.db[self._name]
+        if getattr(self._manager, 'is_mock', False):
+            return AsyncMockCollection(collection)
+        return collection
+
+    def __getattr__(self, item: str):
+        return getattr(self._resolve(), item)
+
+    def __repr__(self) -> str:
+        return f"<CollectionProxy {self._name}>"
 
 class DatabaseManager:
     """
@@ -18,10 +146,24 @@ class DatabaseManager:
     def __init__(self):
         self.url = os.getenv("MONGO_URL")
         self.db_name = os.getenv("DB_NAME", "studlyf_db")
-        
+        self.environment = os.getenv("ENVIRONMENT", "development").lower()
+        self.is_mock = False
+
         if not self.url:
+            if self.environment == "development":
+                if MONGOMOCK_AVAILABLE:
+                    logger.warning("MONGO_URL is not set. Using in-memory MongoDB mock in development mode.")
+                    self.client = mongomock.MongoClient()
+                    self.db = AsyncMockDatabase(self.client[self.db_name])
+                    self.is_mock = True
+                    self.load_mock_data()
+                    return
+                logger.warning("MONGO_URL is not set. Starting without MongoDB in development mode.")
+                self.client = None
+                self.db = None
+                return
             raise RuntimeError("MONGO_URL is not set. Refusing to start without a real database connection.")
-            
+
         try:
             self.client = AsyncIOMotorClient(
                 self.url,
@@ -33,6 +175,48 @@ class DatabaseManager:
             logger.error(f"Failed to initialize Motor Client: {e}")
             self.client = None
             self.db = None
+
+    def save_mock_data(self):
+        if not getattr(self, 'is_mock', False) or self.client is None:
+            return
+        try:
+            import json
+            from bson import json_util
+            file_path = os.path.join(os.path.dirname(__file__), ".mock_db_dump.json")
+            data = {}
+            mock_db = self.client[self.db_name]
+            for col_name in mock_db.list_collection_names():
+                col = mock_db[col_name]
+                docs = list(col.find({}))
+                if docs:
+                    data[col_name] = json.loads(json_util.dumps(docs))
+            
+            with open(file_path, "w") as f:
+                json.dump(data, f)
+        except Exception as e:
+            logger.error(f"Failed to save mock DB data: {e}")
+
+    def load_mock_data(self):
+        if not getattr(self, 'is_mock', False) or self.client is None:
+            return
+        try:
+            import json
+            from bson import json_util
+            file_path = os.path.join(os.path.dirname(__file__), ".mock_db_dump.json")
+            if not os.path.exists(file_path):
+                return
+            with open(file_path, "r") as f:
+                data = json.load(f)
+            mock_db = self.client[self.db_name]
+            for col_name, docs_data in data.items():
+                col = mock_db[col_name]
+                col.delete_many({})
+                docs = json_util.loads(json.dumps(docs_data))
+                if docs:
+                    col.insert_many(docs)
+            logger.info("Restored mock MongoDB data from disk.")
+        except Exception as e:
+            logger.error(f"Failed to load mock DB data: {e}")
 
     async def _ensure_connected(self):
         """Test connection on startup."""
@@ -73,14 +257,54 @@ class DatabaseManager:
 
     async def connect(self):
         """Verify connectivity and run health checks."""
-        await self._ensure_connected()
-        if self.db is not None:
+        if getattr(self, 'is_mock', False):
+            logger.info("Using in-memory mock MongoDB for development")
             try:
-                # Initialize core indexes
                 await self.ensure_indexes()
-                logger.info("Database connected and indexes ensured")
+                logger.info("Mock database indexes ensured")
             except Exception as e:
-                logger.warning(f"Index creation warning: {e}")
+                logger.warning(f"Mock index creation warning: {e}")
+            return
+
+        if self.db is None:
+            if self.environment == "development" and MONGOMOCK_AVAILABLE:
+                logger.warning("MongoDB is unavailable. Falling back to in-memory mock MongoDB in development mode.")
+                self.client = mongomock.MongoClient()
+                self.db = AsyncMockDatabase(self.client[self.db_name])
+                self.is_mock = True
+                self.load_mock_data()
+                try:
+                    await self.ensure_indexes()
+                    logger.info("Mock database indexes ensured")
+                except Exception as e:
+                    logger.warning(f"Mock index creation warning: {e}")
+                return
+            raise RuntimeError("No database connection is available.")
+
+        try:
+            await self._ensure_connected()
+            if self.db is not None:
+                try:
+                    # Initialize core indexes
+                    await self.ensure_indexes()
+                    logger.info("Database connected and indexes ensured")
+                except Exception as e:
+                    logger.warning(f"Index creation warning: {e}")
+        except Exception as e:
+            if self.environment == "development" and MONGOMOCK_AVAILABLE:
+                logger.warning("Database connection failed. Using in-memory mock MongoDB fallback for development.")
+                self.client = mongomock.MongoClient()
+                self.db = AsyncMockDatabase(self.client[self.db_name])
+                self.is_mock = True
+                self.load_mock_data()
+                try:
+                    await self.ensure_indexes()
+                    logger.info("Mock database indexes ensured")
+                except Exception as index_err:
+                    logger.warning(f"Mock index creation warning: {index_err}")
+                return
+            raise
+
 
     async def disconnect(self):
         """Graceful shutdown."""
@@ -124,6 +348,9 @@ class DatabaseManager:
             await self.db.institutions.create_index("name", unique=True)
             await self.db.institutions.create_index("institution_id", unique=True)
             await self.db.institutions.create_index("email", unique=True, sparse=True)
+            
+            # ── Startups ──
+            await self.db.startups.create_index("institution_id", unique=True)
             
             # ── Events (supports institution dashboard queries) ──
             try:
@@ -265,9 +492,7 @@ class DatabaseManager:
 
     def __getitem__(self, collection_name: str):
         """Allows db['collection'] access with lazy connection."""
-        if self.db is None:
-            raise RuntimeError("Database is not connected")
-        return self.db[collection_name]
+        return CollectionProxy(self, collection_name)
 
     def __getattr__(self, name: str):
         """Allows db.collection access."""
@@ -275,6 +500,10 @@ class DatabaseManager:
 
 # --- Global Instance renamed to 'db' as requested ---
 db = DatabaseManager()
+
+async def ensure_indexes():
+    """Ensure database indexes on startup."""
+    await db.ensure_indexes()
 
 # ─── COLLECTION REGISTRY ──────────────────────────────────────────────────────
 # Academic Core
@@ -316,6 +545,7 @@ sdl_join_requests_col = db["sdl_join_requests"]
 
 # Institution Dashboard Ecosystem (High-End Modular Architecture)
 institutions_col = db["institutions"]
+startups_col = db["startups"]
 events_col = db["events"]
 faqs_col = db["event_faqs"]
 rounds_col = db["rounds"]                # Dynamic Phases (Assessment, Submission, etc.)

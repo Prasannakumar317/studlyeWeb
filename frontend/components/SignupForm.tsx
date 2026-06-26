@@ -53,6 +53,7 @@ const SignupForm: React.FC<SignupFormProps> = ({ onSwitchToLogin, transparent = 
 
     // Role detection from URL or email context
     const queryParams = new URLSearchParams(location.search);
+    const isStartupRegister = queryParams.get('role') === 'startup';
     let selectedRole = queryParams.get('role') || 'student';
 
     // Auto-detect judge role if coming from judge invitation
@@ -71,7 +72,7 @@ const SignupForm: React.FC<SignupFormProps> = ({ onSwitchToLogin, transparent = 
         }
     }
 
-    const isInstitution = selectedRole === 'institution';
+    const isInstitution = selectedRole === 'institution' || selectedRole === 'startup';
 
     const handleSignup = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -181,12 +182,14 @@ const SignupForm: React.FC<SignupFormProps> = ({ onSwitchToLogin, transparent = 
                             <div className={fieldGrid}>
                                 {isInstitution && (
                                     <div className="md:col-span-2">
-                                        <label className={labelClasses}>Institution Name</label>
+                                        <label className={labelClasses}>
+                                            {isStartupRegister ? 'Startup Name' : 'Institution Name'}
+                                        </label>
                                         <div className="relative">
                                             <Building2 className="absolute left-3 top-3.5 text-gray-300" size={18} />
                                             <input
                                                 type="text"
-                                                placeholder="e.g. IIT Delhi"
+                                                placeholder={isStartupRegister ? 'e.g. Stripe' : 'e.g. IIT Delhi'}
                                                 className={`${inputBase} pl-10`}
                                                 value={institutionName}
                                                 onChange={(e) => setInstitutionName(e.target.value)}
@@ -198,13 +201,13 @@ const SignupForm: React.FC<SignupFormProps> = ({ onSwitchToLogin, transparent = 
 
                                 <div>
                                     <label className={labelClasses}>
-                                        {isInstitution ? 'Administrator Name' : 'Full Name'}
+                                        {isStartupRegister ? 'Founder Name' : (isInstitution ? 'Administrator Name' : 'Full Name')}
                                     </label>
                                     <div className="relative">
                                         <User className="absolute left-3 top-3.5 text-gray-300" size={18} />
                                         <input
                                             type="text"
-                                            placeholder={isInstitution ? 'Administrator' : 'Shiva'}
+                                            placeholder={isStartupRegister ? 'Founder' : (isInstitution ? 'Administrator' : 'Shiva')}
                                             className={`${inputBase} pl-10`}
                                             value={fullName}
                                             onChange={(e) => setFullName(e.target.value)}
@@ -221,7 +224,7 @@ const SignupForm: React.FC<SignupFormProps> = ({ onSwitchToLogin, transparent = 
                                         <Mail className="absolute left-3 top-3.5 text-gray-300" size={18} />
                                         <input
                                             type="email"
-                                            placeholder={isInstitution ? 'admin@institution.edu' : 'shiva@gmail.com'}
+                                            placeholder={isStartupRegister ? 'founder@startup.com' : (isInstitution ? 'admin@institution.edu' : 'shiva@gmail.com')}
                                             className={`${inputBase} pl-10`}
                                             value={email}
                                             onChange={(e) => setEmail(e.target.value)}

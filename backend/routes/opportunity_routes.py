@@ -45,9 +45,9 @@ async def post_opportunity(data: dict = Body(...), user: dict = Depends(get_auth
     """API to post a new opportunity."""
     try:
         role = str(user.get("role") or "").lower()
-        if role not in ("institution", "admin", "super_admin"):
-            raise HTTPException(status_code=403, detail="Institution access required")
-        if role == "institution":
+        if role not in ("institution", "startup", "admin", "super_admin"):
+            raise HTTPException(status_code=403, detail="Institution or Startup access required")
+        if role in ("institution", "startup"):
             institution_id = user.get("institution_id")
             if not institution_id:
                 raise HTTPException(status_code=403, detail="Institution profile is not linked")
@@ -1218,5 +1218,89 @@ def _stage_unlock_email_html(participant_name: str, event_title: str, org_name: 
 <p style="font-size:12px;color:#94a3b8;margin:0;">Regards,<br>Team Studlyf<br>On behalf of {on}</p>
 </div>
 </div></body></html>"""
+
+
+@router.put("/{opportunity_id}")
+async def edit_opportunity(opportunity_id: str, data: dict = Body(...), user: dict = Depends(get_auth_user)):
+    """API to edit an existing opportunity."""
+    from db import opportunities_col
+    try:
+        role = str(user.get("role") or "").lower()
+        if role not in ("institution", "startup", "admin", "super_admin"):
+            raise HTTPException(status_code=403, detail="Forbidden")
+        
+        # Verify ownership
+        existing = await opportunities_col.find_one({"_id": ObjectId(opportunity_id)})
+        if not existing:
+            raise HTTPException(status_code=404, detail="Opportunity not found")
+        
+        if role in ("institution", "startup"):
+            inst_id = user.get("institution_id")
+            if str(existing.get("institution_id")) != str(inst_id):
+                raise HTTPException(status_code=403, detail="Not authorized to edit this opportunity")
+        
+        # Clean fields
+        update_data = {k: v for k, v in data.items() if k != "_id"}
+        update_data["updated_at"] = datetime.utcnow()
+        
+        await opportunities_col.update_one({"_id": ObjectId(opportunity_id)}, {"$set": update_data})
+        return {"status": "success", "message": "Opportunity updated successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/{opportunity_id}")
+async def delete_opportunity(opportunity_id: str, user: dict = Depends(get_auth_user)):
+    """API to delete an opportunity."""
+    from db import opportunities_col
+    try:
+        role = str(user.get("role") or "").lower()
+        if role not in ("institution", "startup", "admin", "super_admin"):
+            raise HTTPException(status_code=403, detail="Forbidden")
+        
+        existing = await opportunities_col.find_one({"_id": ObjectId(opportunity_id)})
+        if not existing:
+            raise HTTPException(status_code=404, detail="Opportunity not found")
+        
+        if role in ("institution", "startup"):
+            inst_id = user.get("institution_id")
+            if str(existing.get("institution_id")) != str(inst_id):
+                raise HTTPException(status_code=403, detail="Not authorized to delete this opportunity")
+        
+        # Delete the opportunity
+        await opportunities_col.delete_one({"_id": ObjectId(opportunity_id)})
+        # Also clean up any associated applications
+        from db import opportunity_applications_col
+        await opportunity_applications_col.delete_many({"opportunity_id": opportunity_id})
+        
+        return {"status": "success", "message": "Opportunity deleted successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.patch("/{opportunity_id}/close")
+async def close_opportunity(opportunity_id: str, user: dict = Depends(get_auth_user)):
+    """API to close/archive an opportunity."""
+    from db import opportunities_col
+    try:
+        role = str(user.get("role") or "").lower()
+        if role not in ("institution", "startup", "admin", "super_admin"):
+            raise HTTPException(status_code=403, detail="Forbidden")
+        
+        existing = await opportunities_col.find_one({"_id": ObjectId(opportunity_id)})
+        if not existing:
+            raise HTTPException(status_code=404, detail="Opportunity not found")
+        
+        if role in ("institution", "startup"):
+            inst_id = user.get("institution_id")
+            if str(existing.get("institution_id")) != str(inst_id):
+                raise HTTPException(status_code=403, detail="Not authorized to modify this opportunity")
+        
+        await opportunities_col.update_one(
+            {"_id": ObjectId(opportunity_id)},
+            {"$set": {"status": "closed", "updated_at": datetime.utcnow()}}
+        )
+        return {"status": "success", "message": "Opportunity closed successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 

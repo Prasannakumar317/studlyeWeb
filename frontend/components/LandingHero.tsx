@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../AuthContext';
 
 const words = ['doing', 'building', 'coding', 'solving', 'creating'];
 
@@ -69,6 +70,7 @@ const ScatterDots = () => (
 
 const LandingHero: React.FC = () => {
     const navigate = useNavigate();
+    const { user, role } = useAuth();
     const [index, setIndex] = useState(0);
 
     useEffect(() => {
@@ -372,6 +374,26 @@ const LandingHero: React.FC = () => {
                                 <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
                                     <path d="M4 10h12M11 5l5 5-5 5"
                                         stroke="#7c3aed" strokeWidth="2.2"
+                                        strokeLinecap="round" strokeLinejoin="round" />
+                                </svg>
+                            </span>
+                        </button>
+
+                        <button
+                            className="trynow-btn !bg-gradient-to-r !from-[#EC4899] !to-[#FF5B5B] shadow-xl hover:opacity-95"
+                            onClick={() => {
+                                if (user && role === 'startup') {
+                                    navigate('/startup-dashboard');
+                                } else {
+                                    navigate('/signup?role=startup');
+                                }
+                            }}
+                        >
+                            <span className="trynow-label">For Startups</span>
+                            <span className="arrow-icon">
+                                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                                    <path d="M4 10h12M11 5l5 5-5 5"
+                                        stroke="white" strokeWidth="2.2"
                                         strokeLinecap="round" strokeLinejoin="round" />
                                 </svg>
                             </span>

@@ -19,7 +19,7 @@ from services.ai_tools_scraper import fetch_ai_tools
 from jinja2 import Environment, FileSystemLoader, Template
 from fastapi.responses import HTMLResponse
 import json
-from time import time
+import time
 import asyncio
 from services.email_service import send_notification_email, get_registration_template, get_announcement_template
 from datetime import datetime, timezone
@@ -28,7 +28,6 @@ import secrets
 
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
-import time
 import logging
 
 logging.basicConfig(level=logging.INFO)
@@ -67,6 +66,10 @@ app.include_router(skill_assessment_router)
 
 from routes.certificate_template_routes import router as certificate_template_router
 app.include_router(certificate_template_router)
+
+from startup_routes import router as startup_router
+app.include_router(startup_router)
+
 # Touch file to trigger uvicorn reload when env changes during local dev
 # reload trigger
 
@@ -81,13 +84,13 @@ def cache_get(key: str):
     if not item:
         return None
     html, expiry = item
-    if expiry and expiry < time():
+    if expiry and expiry < time.time():
         _html_cache.pop(key, None)
         return None
     return html
 
 def cache_set(key: str, html: str, ttl: int = 60):
-    expiry = time() + ttl if ttl and ttl > 0 else None
+    expiry = time.time() + ttl if ttl and ttl > 0 else None
     _html_cache[key] = (html, expiry)
 
 
@@ -216,48 +219,54 @@ async def startup_event():
     # process fails fast when no real MongoDB is available.
     await db.connect()
     
-    # Spawn background stage email queue worker
+    # Spawn background stage email queue worker if database is available
     try:
-        from services.email_queue_service import start_email_queue_worker
-        asyncio.create_task(start_email_queue_worker())
-        logger.info("Background Stage Email Queue Worker spawned successfully")
+        if db.db is not None:
+            from services.email_queue_service import start_email_queue_worker
+            asyncio.create_task(start_email_queue_worker())
+            logger.info("Background Stage Email Queue Worker spawned successfully")
+        else:
+            logger.warning("Skipping email queue worker because database is unavailable")
     except Exception as e:
         logger.error(f"Failed to start background stage email queue worker: {e}")
 
     logger.info("Application startup completed successfully")
 
     # DB diagnostics dump
-    try:
-        from db import events_col, opportunities_col
-        events_cursor = events_col.find({})
-        events = await events_cursor.to_list(length=100)
-        opps_cursor = opportunities_col.find({})
-        opps = await opps_cursor.to_list(length=100)
-        
-        diag_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "db_diagnostics.txt")
-        with open(diag_path, "w", encoding="utf-8") as f:
-            f.write(f"=== DB DIAGNOSTICS ===\n")
-            f.write(f"Timestamp: {datetime.now().isoformat()}\n\n")
-            f.write(f"--- EVENTS ({len(events)}) ---\n")
-            for e in events:
-                f.write(f"ID: {e.get('_id')}\n")
-                f.write(f"Title: {e.get('title')}\n")
-                f.write(f"Logo URL: {e.get('logo_url')}\n")
-                f.write(f"Banner URL: {e.get('banner_url')}\n")
-                f.write(f"Status: {e.get('status')}\n")
-                f.write("-" * 20 + "\n")
-                
-            f.write(f"\n--- OPPORTUNITIES ({len(opps)}) ---\n")
-            for o in opps:
-                f.write(f"ID: {o.get('_id')}\n")
-                f.write(f"Title: {o.get('title')}\n")
-                f.write(f"Logo URL: {o.get('logo_url')}\n")
-                f.write(f"Banner URL: {o.get('banner_url')}\n")
-                f.write(f"Event Link ID: {o.get('event_link_id')}\n")
-                f.write("-" * 20 + "\n")
-        logger.info(f"DB diagnostics written to {diag_path}")
-    except Exception as e:
-        logger.error(f"Failed to write DB diagnostics: {e}")
+    if db.db is not None:
+        try:
+            from db import events_col, opportunities_col
+            events_cursor = events_col.find({})
+            events = await events_cursor.to_list(length=100)
+            opps_cursor = opportunities_col.find({})
+            opps = await opps_cursor.to_list(length=100)
+            
+            diag_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "db_diagnostics.txt")
+            with open(diag_path, "w", encoding="utf-8") as f:
+                f.write(f"=== DB DIAGNOSTICS ===\n")
+                f.write(f"Timestamp: {datetime.now().isoformat()}\n\n")
+                f.write(f"--- EVENTS ({len(events)}) ---\n")
+                for e in events:
+                    f.write(f"ID: {e.get('_id')}\n")
+                    f.write(f"Title: {e.get('title')}\n")
+                    f.write(f"Logo URL: {e.get('logo_url')}\n")
+                    f.write(f"Banner URL: {e.get('banner_url')}\n")
+                    f.write(f"Status: {e.get('status')}\n")
+                    f.write("-" * 20 + "\n")
+                    
+                f.write(f"\n--- OPPORTUNITIES ({len(opps)}) ---\n")
+                for o in opps:
+                    f.write(f"ID: {o.get('_id')}\n")
+                    f.write(f"Title: {o.get('title')}\n")
+                    f.write(f"Logo URL: {o.get('logo_url')}\n")
+                    f.write(f"Banner URL: {o.get('banner_url')}\n")
+                    f.write(f"Event Link ID: {o.get('event_link_id')}\n")
+                    f.write("-" * 20 + "\n")
+            logger.info(f"DB diagnostics written to {diag_path}")
+        except Exception as e:
+            logger.error(f"Failed to write DB diagnostics: {e}")
+    else:
+        logger.warning("Skipping DB diagnostics because database is unavailable")
 
     # Start background scheduler for reminders (non-fatal)
     try:
@@ -6464,7 +6473,7 @@ async def forgot_password(data: dict = Body(...)):
     
     # Generate secure token and persist to DB so it survives restarts
     token = secrets.token_urlsafe(32)
-    expiry_ts = int(time() + 3600)  # 1 hour expiry (unix ts)
+    expiry_ts = int(time.time() + 3600)  # 1 hour expiry (unix ts)
     try:
         # Use a dedicated collection for password resets
         # Persist a token_hash to avoid unique-index conflicts on null values
@@ -6516,7 +6525,7 @@ async def reset_password(data: dict = Body(...)):
     if not token_doc:
         raise HTTPException(status_code=400, detail="Invalid or expired token")
 
-    if int(time()) > int(token_doc.get("expiry", 0)):
+    if int(time.time()) > int(token_doc.get("expiry", 0)):
         # remove expired token
         try:
             await db.password_resets.delete_one({"token": token})
@@ -6589,7 +6598,7 @@ async def signup(user_data: UserSignup, request: Request):
         raise HTTPException(status_code=400, detail=f"Hashing error: {str(e)}")
     user_id = str(uuid.uuid4())
     inst_id = None
-    if user_data.role == "institution":
+    if user_data.role in ("institution", "startup"):
         from db import institutions_col
         # Only proceed if institution_name is provided
         if user_data.institution_name:
@@ -6640,7 +6649,7 @@ async def signup(user_data: UserSignup, request: Request):
     await users_col.insert_one({**user_doc, "email_verified": False})
 
     verification_token = secrets.token_urlsafe(32)
-    verification_expiry = int(time() + 86400)
+    verification_expiry = int(time.time() + 86400)
     try:
         await db.email_verifications.insert_one({
             "token": verification_token,
@@ -6683,7 +6692,7 @@ async def verify_email(data: dict = Body(...)):
         expiry = int(token_doc.get("expiry") or 0)
     except Exception:
         expiry = 0
-    if expiry and int(time()) > expiry:
+    if expiry and int(time.time()) > expiry:
         await db.email_verifications.delete_one({"token": token})
         raise HTTPException(status_code=400, detail="Verification link has expired")
 
@@ -6832,7 +6841,7 @@ async def resend_verification(data: dict = Body(...)):
         return {"status": "success", "message": "Email is already verified."}
 
     token = secrets.token_urlsafe(32)
-    expiry = int(time() + 86400)
+    expiry = int(time.time() + 86400)
     await db.email_verifications.update_one(
         {"email": email},
         {

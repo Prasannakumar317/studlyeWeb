@@ -382,3 +382,51 @@ body {
     letter-spacing: 0.4em; text-transform: uppercase;
     color: #a78bfa; animation: boot-pulse 2s ease-in-out infinite;
 }
+
+/* ── Premium Card Interactions Styling ── */
+@keyframes premium-gradient-border {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+.animate-premium-gradient-border {
+  background-size: 200% 200%;
+  animation: premium-gradient-border 8s ease infinite;
+}
+
+@keyframes premium-shimmer-sweep {
+  0% { transform: translate(-150%, -150%) rotate(35deg); }
+  100% { transform: translate(150%, 150%) rotate(35deg); }
+}
+.animate-premium-shimmer-sweep {
+  animation: premium-shimmer-sweep 7s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+@keyframes premium-pulse-glow {
+  0%, 100% { opacity: 0.15; filter: blur(28px); transform: scale(0.98); }
+  50% { opacity: 0.35; filter: blur(36px); transform: scale(1.03); }
+}
+.animate-premium-pulse-glow {
+  animation: premium-pulse-glow 5s ease-in-out infinite;
+}
+
+/* Glow themes mapping */
+.glow-theme-blue {
+  background: radial-gradient(circle at 50% 50%, rgba(59, 130, 246, 0.4) 0%, rgba(99, 102, 241, 0.1) 50%, transparent 70%);
+}
+.glow-theme-green {
+  background: radial-gradient(circle at 50% 50%, rgba(16, 185, 129, 0.4) 0%, rgba(20, 184, 166, 0.1) 50%, transparent 70%);
+}
+.glow-theme-orange {
+  background: radial-gradient(circle at 50% 50%, rgba(245, 158, 11, 0.4) 0%, rgba(239, 68, 68, 0.1) 50%, transparent 70%);
+}
+.glow-theme-pink {
+  background: radial-gradient(circle at 50% 50%, rgba(236, 72, 153, 0.4) 0%, rgba(244, 63, 94, 0.1) 50%, transparent 70%);
+}
+.glow-theme-purple {
+  background: radial-gradient(circle at 50% 50%, rgba(168, 85, 247, 0.4) 0%, rgba(139, 92, 246, 0.1) 50%, transparent 70%);
+}
+.glow-theme-cyan {
+  background: radial-gradient(circle at 50% 50%, rgba(6, 182, 212, 0.4) 0%, rgba(59, 130, 246, 0.1) 50%, transparent 70%);
+}
+
