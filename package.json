@@ -2,8 +2,8 @@
   "name": "studlyf-root",
   "private": true,
   "scripts": {
-    "install:frontend": "npm --prefix frontend install",
-    "build": "npm --prefix frontend run build"
+    "install:frontend": "npm install --prefix frontend",
+    "build": "npm exec --prefix frontend vite build"
   },
   "dependencies": {
     "sharp": "^0.34.5"
