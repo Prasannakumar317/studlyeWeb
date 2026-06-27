@@ -36,7 +36,7 @@ from services.email_service import (
     get_registration_deadline_reminder_template,
     get_event_published_template,
 )
-from services.institutional_analytics_service import analytics_service
+from .services.institutional_analytics_service import analytics_service
 from services.institutional_certificate_service import certificate_service
 from services.leaderboard_service import leaderboard_service
 from .db import db, leaderboard_col, events_col, participants_col, certificates_col, notifications_col, institutions_col, users_col, teams_col, submissions_col, submission_data_col, scores_col, results_col, audit_logs_col, opportunities_col, opportunity_applications_col, hackathon_submissions_col, event_certificates_col, avatars_col

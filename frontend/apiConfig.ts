@@ -3,8 +3,8 @@
 const viteEnv = import.meta.env as Record<string, string | undefined>;
 
 function resolveDefaultApiBaseUrl(): string {
-    // Use VITE_API_BASE_URL if defined, otherwise fallback to RENDER_EXTERNAL_URL for production, else empty for dev proxy
-    return viteEnv.VITE_API_BASE_URL || viteEnv.RENDER_EXTERNAL_URL || '';
+    // Prioritize explicit VITE_API_BASE_URL, then VITE_API_PROXY, then fallback to RENDER_EXTERNAL_URL
+    return viteEnv.VITE_API_BASE_URL || viteEnv.VITE_API_PROXY || viteEnv.RENDER_EXTERNAL_URL || '';
 }
 
 let resolvedUrl = viteEnv.VITE_API_BASE_URL ??
