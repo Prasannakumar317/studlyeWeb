@@ -3,6 +3,12 @@
   "installCommand": "npm install && npm --prefix frontend install --include=dev",
   "buildCommand": "npm --prefix frontend run build",
   "outputDirectory": "frontend/dist",
+  "build": {
+    "env": {
+      "VITE_API_BASE_URL": "https://studlyeweb.onrender.com",
+      "VITE_API_PROXY": "https://studlyeweb.onrender.com"
+    }
+  },
   "env": {
     "VITE_API_BASE_URL": "https://studlyeweb.onrender.com",
     "VITE_API_PROXY": "https://studlyeweb.onrender.com"
