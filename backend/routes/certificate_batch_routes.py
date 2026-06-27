@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends
 from typing import List
-from .db import db
+from ..db import db
 from models.certificate_batch_models import CertificateBatch, BatchStatus, AuditEntry
 from datetime import datetime
 from bson import ObjectId

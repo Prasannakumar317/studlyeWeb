@@ -1,6 +1,6 @@
 import secrets
 import time
-from services.email_service import send_notification_email
+from .email_service import send_notification_email
 
 # Simple in-memory storage for OTPs (In production, use Redis or a DB)
 otp_store = {}

@@ -7,7 +7,7 @@ import logging
 from datetime import datetime
 from typing import Optional
 
-from services.email_template_service import send_template_email
+from .email_template_service import send_template_email
 
 logger = logging.getLogger("platform_notification_service")
 

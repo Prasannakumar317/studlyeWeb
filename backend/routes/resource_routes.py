@@ -12,8 +12,8 @@ from fastapi import APIRouter, HTTPException, Depends, Header, Query, Request, U
 from pydantic import BaseModel
 from bson import ObjectId
 
-from .db import db
-from routes.auth import get_current_user
+from ..db import db
+from .auth import get_current_user
 
 router = APIRouter(prefix="/api/resources", tags=["Startup Resources"])
 

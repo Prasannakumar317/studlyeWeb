@@ -6,7 +6,7 @@ from bson import ObjectId
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
-from services.email_service import send_notification_email, get_registration_template, get_shortlist_template
+from .email_service import send_notification_email, get_registration_template, get_shortlist_template
 
 opportunities_col = db["opportunities"]
 opportunity_applications_col = db["opportunity_applications"]
@@ -383,7 +383,7 @@ async def _filter_public_opportunities(docs: List[dict]) -> List[dict]:
         if inst_id:
             if inst_id not in plan_rules_cache:
                 try:
-                    from services.subscription_service import get_current_plan_rules
+                    from .subscription_service import get_current_plan_rules
                     rules = await get_current_plan_rules(inst_id)
                     plan_rules_cache[inst_id] = int(rules.get("access_days_after_deadline") or 0)
                 except Exception:

@@ -4,9 +4,9 @@ from fastapi import APIRouter, HTTPException, Body, Depends, Query
 from typing import Optional
 from bson import ObjectId
 from datetime import datetime, timezone
-from .auth_institution import get_auth_user, get_auth_user_optional
+from ..auth_institution import get_auth_user, get_auth_user_optional
 
-from .db import (
+from ..db import (
     career_assessments_col, career_assessment_templates_col, career_goals_col, assessment_questions_col,
     blogs_col, learning_tracks_col,
     company_questions_col, partners_col, partner_talent_pool_col,
@@ -18,7 +18,7 @@ from .db import (
 router = APIRouter(prefix="/api/student", tags=["Student Features"])
 
 from utils.db_helpers import fix_id
-from services.rule_based_evaluator import evaluate_answer
+from ..services.rule_based_evaluator import evaluate_answer
 
 # ─── CAREER GOALS ──────────────────────────────────────────────────────────────
 

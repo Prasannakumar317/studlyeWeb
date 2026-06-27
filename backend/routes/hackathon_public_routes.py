@@ -5,7 +5,7 @@ from typing import Optional
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from .db import (
+from ..db import (
     events_col,
     institutions_col,
     participants_col,
@@ -15,7 +15,7 @@ from .db import (
     opportunities_col,
     users_col,
 )
-from routes.auth import get_current_user
+from .auth import get_current_user
 
 router = APIRouter(prefix="/api/v1/hackathons", tags=["Hackathon Public"])
 

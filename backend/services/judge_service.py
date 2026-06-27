@@ -49,7 +49,7 @@ async def send_judge_panel_invitation_email(
     invitation_token: str = "",
 ) -> bool:
     """Send judge invitation email with accept/decline page link (not the institution admin dashboard)."""
-    from services.email_service import send_notification_email
+    from .email_service import send_notification_email
 
     email = (to_email or "").strip().lower()
     if not email:
@@ -324,7 +324,7 @@ async def assign_judge_to_multiple_submissions(submission_ids: list, judge_id: s
     from datetime import datetime, timezone, timedelta
     import os
     from bson import ObjectId
-    from services.email_service import send_notification_email
+    from .email_service import send_notification_email
     
     print(f"DEBUG: Assigning judge {judge_id} to submissions: {submission_ids}")
 

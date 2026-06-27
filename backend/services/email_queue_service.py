@@ -4,8 +4,8 @@ from datetime import datetime
 
 from ..db import email_delivery_logs_col, email_queue_col
 from pymongo import ReturnDocument
-from services.email_service import send_notification_email
-from services.circuit_breaker import get_circuit_breaker
+from .email_service import send_notification_email
+from .circuit_breaker import get_circuit_breaker
 
 logger = logging.getLogger("email_queue_service")
 

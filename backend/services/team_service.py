@@ -109,7 +109,7 @@ async def create_team(
         )
 
         # ADVANCE STAGE: Move to next stage (e.g. Idea Submission) after team formation
-        from services.stage_service import advance_participant_to_next_stage
+        from .stage_service import advance_participant_to_next_stage
         await advance_participant_to_next_stage(event_id, user_id)
 
         return {
@@ -312,7 +312,7 @@ async def join_team_with_code(
         )
 
         # ADVANCE STAGE
-        from services.stage_service import advance_participant_to_next_stage
+        from .stage_service import advance_participant_to_next_stage
         await advance_participant_to_next_stage(event_id, user_id)
 
         return {
@@ -449,7 +449,7 @@ async def create_solo_team(event_id: str, user_id: str) -> dict:
         )
 
         # ADVANCE STAGE
-        from services.stage_service import advance_participant_to_next_stage
+        from .stage_service import advance_participant_to_next_stage
         await advance_participant_to_next_stage(event_id, user_id)
 
         return {

@@ -2,10 +2,10 @@ from fastapi import APIRouter, HTTPException, Depends, Body, Query
 from typing import List, Optional
 from datetime import datetime
 from bson import ObjectId
-from .db import hackathon_submissions_col, events_col, users_col, judges_col, participants_col, teams_col
+from ..db import hackathon_submissions_col, events_col, users_col, judges_col, participants_col, teams_col
 from domain_models import HackathonSubmission
-from routes.auth import get_current_user
-from stage_access_control import check_stage_submission_access, check_stage_deadline
+from .auth import get_current_user
+from ..stage_access_control import check_stage_submission_access, check_stage_deadline
 
 router = APIRouter(prefix="/api/hackathons", tags=["Hackathon Submissions"])
 
@@ -308,9 +308,9 @@ async def assign_judge(data: dict = Body(...)):
 async def evaluate_submission(submission_id: str, data: dict = Body(...)):
     """Evaluate a submission with rubric scores."""
     from db import scores_col, submission_data_col, submissions_col
-    from stage_access_control import auto_advance_participant_on_score
+    from ..stage_access_control import auto_advance_participant_on_score
     import asyncio
-    from services.leaderboard_service import leaderboard_service
+    from ..services.leaderboard_service import leaderboard_service
 
     rubric_scores = data.get("rubricScores", {})
     feedback = data.get("feedback", "")

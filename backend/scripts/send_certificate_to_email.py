@@ -5,8 +5,8 @@ import sys
 from datetime import datetime, timezone
 
 from .db import db, event_certificates_col, email_queue_col, email_delivery_logs_col, participants_col, events_col
-from services.email_service import get_certificate_issued_template, send_notification_email
-from services.email_template_service import get_active_template, render_template
+from .services.email_service import get_certificate_issued_template, send_notification_email
+from .services.email_template_service import get_active_template, render_template
 
 
 if hasattr(sys.stdout, 'reconfigure'):

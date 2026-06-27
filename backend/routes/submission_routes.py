@@ -1,8 +1,8 @@
 from fastapi import APIRouter, HTTPException, Body, Depends, Query
-from services.submission_service import create_submission, get_all_submissions, get_submission_by_id, update_submission_status
+from ..services.submission_service import create_submission, get_all_submissions, get_submission_by_id, update_submission_status
 from typing import List, Optional
-from routes.auth import get_current_user, require_role
-from .auth_institution import get_auth_user
+from .auth import get_current_user, require_role
+from ..auth_institution import get_auth_user
 
 router = APIRouter(prefix="/api/submissions", tags=["Submissions"])
 
@@ -129,7 +129,7 @@ async def notify_shortlisted(
     Supports 'dry_run' mode for verification.
     """
     from db import submission_data_col as submissions_col, events_col, users_col, teams_col
-    from services.email_service import send_notification_email
+    from ..services.email_service import send_notification_email
     from bson import ObjectId
     import asyncio
     
@@ -344,7 +344,7 @@ async def admin_view_stage_submissions(
                 stage_name = stage.get("name", stage_id)
                 raw_fields = stage.get("fields") or (stage.get("config") or {}).get("fields") or []
                 try:
-                    from services.field_validation import normalize_stage_fields
+                    from ..services.field_validation import normalize_stage_fields
                     stage_fields = normalize_stage_fields(raw_fields)
                 except Exception:
                     stage_fields = raw_fields

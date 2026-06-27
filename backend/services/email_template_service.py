@@ -714,7 +714,7 @@ async def send_template_email(
     Resolves event-level → institution-level → default template.
     Falls back gracefully if template not found.
     """
-    from services.email_service import send_notification_email
+    from .email_service import send_notification_email
 
     template = await get_active_template(event_id, institution_id, template_type)
     if not template:

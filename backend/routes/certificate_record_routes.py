@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends
 from typing import List
-from .db import db
+from ..db import db
 from models.certificate_record_models import CertificateRecord, CertificateStatus, AuditEntry
 from datetime import datetime
 from bson import ObjectId
@@ -11,7 +11,7 @@ import uuid
 import random
 import string
 from fastapi import APIRouter, HTTPException, Depends
-from .db import db
+from ..db import db
 from models.certificate_record_models import CertificateRecord, CertificateStatus, AuditEntry
 from datetime import datetime
 

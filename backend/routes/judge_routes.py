@@ -1,7 +1,7 @@
 from bson import ObjectId
 from fastapi import APIRouter, HTTPException, Body, Query, Depends
-from .auth_institution import get_auth_user
-from services.judge_service import (
+from ..auth_institution import get_auth_user
+from ..services.judge_service import (
     create_judge,
     get_all_judges,
     assign_judge_to_submission,
@@ -9,7 +9,7 @@ from services.judge_service import (
     get_judge_invitation_details,
     respond_judge_invitation,
 )
-from services.score_service import submit_score, get_scores_for_submission
+from ..services.score_service import submit_score, get_scores_for_submission
 
 router = APIRouter(prefix="/api/judges", tags=["Judges"])
 portal_router = APIRouter(prefix="/api/judge-portal", tags=["Judge Portal"])
@@ -56,7 +56,7 @@ async def assign_round_robin_route(
     judge_ids: list = Body(...),
     max_per_judge: int = Body(0),
 ):
-    from services.judge_service import assign_round_robin
+    from ..services.judge_service import assign_round_robin
 
     cap = int(max_per_judge) if int(max_per_judge or 0) > 0 else 10_000
     return await assign_round_robin(submission_ids, judge_ids, max_per_judge=cap)
@@ -64,7 +64,7 @@ async def assign_round_robin_route(
 
 @router.post("/assign")
 async def assign_judge(submission_id: str = Body(None), submission_ids: list = Body(None), judge_id: str = Body(...)):
-    from services.judge_service import assign_judge_to_multiple_submissions
+    from ..services.judge_service import assign_judge_to_multiple_submissions
     
     try:
         print(f"DEBUG: Judge assignment request - submission_id: {submission_id}, submission_ids: {submission_ids}, judge_id: {judge_id}")
@@ -95,8 +95,8 @@ async def score_submission(
 ):
     import asyncio
     from db import submissions_col, submission_data_col
-    from services.leaderboard_service import leaderboard_service
-    from stage_access_control import auto_advance_participant_on_score
+    from ..services.leaderboard_service import leaderboard_service
+    from ..stage_access_control import auto_advance_participant_on_score
 
     # 1. Submit the score
     result = await submit_score(submission_id, judge_id, scores, comments, team_id=team_id, event_id=event_id)

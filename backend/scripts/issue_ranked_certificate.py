@@ -1,7 +1,7 @@
 import asyncio
 from bson import ObjectId
 from .db import db, participants_col, event_certificates_col
-from services.institutional_certificate_service import certificate_service
+from .services.institutional_certificate_service import certificate_service
 
 EVENT_ID = '6a1923bdbcdebc6f5fff4fbb'
 

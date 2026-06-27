@@ -10,8 +10,8 @@ import asyncio
 import os
 from datetime import datetime, timedelta
 from ..db import db, users_col, opportunities_col, events_col, participants_col
-from services.email_service import send_notification_email
-from services.email_template_service import get_active_template, render_template
+from .email_service import send_notification_email
+from .email_template_service import get_active_template, render_template
 from bson import ObjectId
 
 opportunity_emails_log_col = db["opportunity_emails_log"]
@@ -170,7 +170,7 @@ async def send_deadline_reminder_emails(days_until: int = 3) -> dict:
                         # Prepare email via template system
                         reminder_dt = opp.get('deadline')
                         reminder_date = reminder_dt.strftime('%B %d, %Y') if isinstance(reminder_dt, datetime) else str(reminder_dt or '')
-                        from services.platform_notification_service import notify_opportunity_reminder
+                        from .platform_notification_service import notify_opportunity_reminder
                         await notify_opportunity_reminder(
                             recipient_email=email,
                             participant_name=user.get("name") or user.get("full_name") or "Student",

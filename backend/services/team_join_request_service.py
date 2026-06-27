@@ -16,7 +16,7 @@ from enum import Enum
 import secrets
 import asyncio
 
-from services.email_service import (
+from .email_service import (
     send_notification_email,
     get_team_join_request_approved_template,
 )
@@ -267,7 +267,7 @@ async def approve_join_request(
         )
 
         try:
-            from services.platform_notification_service import notify_team_join_approved
+            from .platform_notification_service import notify_team_join_approved
             event = await events_col.find_one({"_id": ObjectId(join_request["event_id"])} )
             if requester and requester.get("email"):
                 frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")

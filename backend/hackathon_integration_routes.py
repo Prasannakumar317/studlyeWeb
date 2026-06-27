@@ -18,7 +18,7 @@ from .db import (
     users_col,
     payments_col,
 )
-from services.email_service import send_notification_email
+from .services.email_service import send_notification_email
 import hmac
 import hashlib
 import os
@@ -60,7 +60,7 @@ async def ensure_package_enabled(institution_id: str):
 
 async def _send_activation_email(institution_id: str, plan_id: str, provider: str, payment_status: str, actor_email: Optional[str] = None, amount: int = 0, currency: str = 'INR'):
     try:
-        from services.email_template_service import send_template_email
+        from .services.email_template_service import send_template_email
 
         inst = await institutions_col.find_one({"institution_id": institution_id})
         recipient = None
@@ -753,7 +753,7 @@ async def get_plans(user: dict = Depends(get_auth_user)):
         if p["isCurrent"]:
             p["cta"] = "Current Plan"
 
-    from services.subscription_service import get_plan_expiry_status, get_pending_plan
+    from .services.subscription_service import get_plan_expiry_status, get_pending_plan
     expiry = await get_plan_expiry_status(institution_id)
     pending_plan = await get_pending_plan(institution_id)
 
@@ -787,7 +787,7 @@ async def select_plan(body: dict, user: dict = Depends(get_auth_user)):
     if plan_id not in allowed_ids:
         raise HTTPException(400, "Invalid plan_id")
 
-    from services.subscription_service import get_current_plan_id, set_pending_plan
+    from .services.subscription_service import get_current_plan_id, set_pending_plan
 
     current = await get_current_plan_id(institution_id)
     if plan_id == current:
@@ -810,7 +810,7 @@ async def select_plan(body: dict, user: dict = Depends(get_auth_user)):
 async def confirm_plan_change(body: dict, user: dict = Depends(get_auth_user)):
     """Confirm pending plan change and activate the new plan."""
     institution_id = await _get_institution_id(user)
-    from services.subscription_service import confirm_plan_change as _confirm
+    from .services.subscription_service import confirm_plan_change as _confirm
     try:
         result = await _confirm(institution_id, actor_email=user.get("email"))
         return result
@@ -822,7 +822,7 @@ async def confirm_plan_change(body: dict, user: dict = Depends(get_auth_user)):
 async def cancel_pending_plan_change(body: dict, user: dict = Depends(get_auth_user)):
     """Cancel a pending plan change without activating it."""
     institution_id = await _get_institution_id(user)
-    from services.subscription_service import cancel_pending_plan as _cancel
+    from .services.subscription_service import cancel_pending_plan as _cancel
     await _cancel(institution_id)
     return {"success": True, "message": "Plan change cancelled."}
 
@@ -1126,7 +1126,7 @@ async def stripe_webhook(request: Request):
 @router.post("/check-expiring-plans")
 async def check_expiring_plans(user: dict = Depends(get_auth_user)):
     """Admin endpoint to check all institutions with expiring plans and send notifications."""
-    from services.subscription_service import get_stored_plan_end_date, check_and_notify_expiring_plan
+    from .services.subscription_service import get_stored_plan_end_date, check_and_notify_expiring_plan
 
     affected = []
     cursor = hackathon_event_config_col.find({"key": "subscription_end", "value": {"$exists": True}})

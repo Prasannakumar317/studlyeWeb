@@ -1,11 +1,11 @@
 from fastapi import APIRouter, HTTPException, Depends
 from bson import ObjectId
 from datetime import datetime
-from .db import events_col, users_col, participants_col, event_certificates_col
-from .auth_institution import get_auth_user, get_auth_user_optional
-from services.institutional_certificate_service import certificate_service, ACHIEVEMENT_TYPES, VALID_ACHIEVEMENTS
-from services.email_service import send_notification_email
-from services.email_template_service import get_active_template, render_template
+from ..db import events_col, users_col, participants_col, event_certificates_col
+from ..auth_institution import get_auth_user, get_auth_user_optional
+from ..services.institutional_certificate_service import certificate_service, ACHIEVEMENT_TYPES, VALID_ACHIEVEMENTS
+from ..services.email_service import send_notification_email
+from ..services.email_template_service import get_active_template, render_template
 import os
 
 router = APIRouter(prefix="/api/v1/events", tags=["Event Certificates"])
@@ -38,7 +38,7 @@ async def generate_event_certificates(
     event_code = event.get("eventCode") or event.get("event_type") or "HACK"
 
     # Enqueue async job (background worker processes it)
-    from services.institutional_certificate_service import enqueue_certificate_job
+    from ..services.institutional_certificate_service import enqueue_certificate_job
     job_id = await enqueue_certificate_job(
         event_id=event_id,
         achievement_type=achievement_type,

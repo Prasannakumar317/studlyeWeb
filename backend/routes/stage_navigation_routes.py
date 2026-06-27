@@ -3,14 +3,14 @@ Routes for Dynamic Stage Navigation & Submission - Unstop-like Flow
 """
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
-from .auth_institution import get_auth_user, assert_institution_owns_event
-from services.stage_service import (
+from ..auth_institution import get_auth_user, assert_institution_owns_event
+from ..services.stage_service import (
     get_event_stages,
     get_participant_stage_progress,
     get_stage_action_required,
 )
 import asyncio
-from services.team_service import (
+from ..services.team_service import (
     create_team,
     create_solo_team,
     generate_invite_code,
@@ -18,17 +18,17 @@ from services.team_service import (
     leave_team,
     get_team_details,
 )
-from services.dynamic_submission_service import (
+from ..services.dynamic_submission_service import (
     submit_stage_data,
     get_submission_data,
     update_profile_registration,
 )
-from services.registration_service import (
+from ..services.registration_service import (
     complete_registration,
     get_registration_fields_with_prefill,
     check_registration_status,
 )
-from stage_access_control import check_stage_deadline, check_stage_submission_access, get_all_stages_access
+from ..stage_access_control import check_stage_deadline, check_stage_submission_access, get_all_stages_access
 from typing import Optional
 from bson import ObjectId
 from datetime import datetime, timezone
@@ -47,7 +47,7 @@ async def list_event_stages(event_id: str):
         raise HTTPException(status_code=404, detail="Event not found or no stages configured")
     return {"event_id": event_id, "stages": stages}
 
-from routes.registration_flow_routes import resolve_event_id
+from .registration_flow_routes import resolve_event_id
 
 @router.get("/events/{event_id}/progress")
 async def get_progress(event_id: str, user: dict = Depends(get_auth_user)):

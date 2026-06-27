@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends
 from typing import List
-from .db import db
-from routes.auth import get_current_user as get_auth_user
+from ..db import db
+from .auth import get_current_user as get_auth_user
 from models.certificate_models import CertificateTemplate, TemplateSource, TemplateStatus, ALLOWED_TEMPLATE_VARIABLES
 from bson import ObjectId
 from datetime import datetime

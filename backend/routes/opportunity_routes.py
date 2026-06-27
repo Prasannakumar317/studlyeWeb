@@ -5,8 +5,8 @@ from datetime import datetime
 import asyncio
 import os
 
-from .auth_institution import get_auth_user, get_auth_user_optional
-from services.opportunity_service import (
+from ..auth_institution import get_auth_user, get_auth_user_optional
+from ..services.opportunity_service import (
     create_opportunity,
     get_all_opportunities,
     get_opportunity_by_id,
@@ -14,10 +14,10 @@ from services.opportunity_service import (
     get_user_applications,
     get_learner_opportunity_overview,
 )
-from services.subscription_service import validate_new_listing_against_plan
-from .db import notifications_col
-from .db import quizzes_col, events_col, participants_col, opportunities_col, opportunity_applications_col, opportunity_reviews_col
-from services.email_service import send_notification_email
+from ..services.subscription_service import validate_new_listing_against_plan
+from ..db import notifications_col
+from ..db import quizzes_col, events_col, participants_col, opportunities_col, opportunity_applications_col, opportunity_reviews_col
+from ..services.email_service import send_notification_email
 
 router = APIRouter(prefix="/api/opportunities", tags=["Opportunities"])
 
@@ -240,7 +240,7 @@ async def learner_view_quiz(event_id: str, quiz_id: str, user: dict = Depends(ge
             raise HTTPException(status_code=403, detail="This round is only for shortlisted participants")
 
     # Enforce unlock rules (depends_on)
-    from stage_access_control import check_stage_unlock_rules
+    from ..stage_access_control import check_stage_unlock_rules
     for s in stages:
         if not isinstance(s, dict):
             continue
@@ -306,7 +306,7 @@ async def learner_submit_quiz(event_id: str, quiz_id: str, payload: dict = Body(
         raise HTTPException(status_code=400, detail="You have already submitted this assessment")
 
     # Enforce unlock rules (depends_on)
-    from stage_access_control import check_stage_unlock_rules
+    from ..stage_access_control import check_stage_unlock_rules
     for s in (ev.get("stages") or []):
         if not isinstance(s, dict):
             continue
@@ -525,7 +525,7 @@ async def learner_upload_stage_file(
         stages = ev.get("stages") or []
         for s in stages:
             if str(s.get("id")) == stage_id:
-                from services.opportunity_service import _safe_dt
+                from ..services.opportunity_service import _safe_dt
                 end = _safe_dt(s.get("deadline") or s.get("endDate") or s.get("end_date"))
                 if end:
                     end_dt = end.replace(tzinfo=None)
@@ -569,7 +569,7 @@ async def learner_upload_stage_file(
             stages = ev.get("stages") or []
             for s in stages:
                 if str(s.get("id")) == stage_id:
-                    from services.opportunity_service import _safe_dt
+                    from ..services.opportunity_service import _safe_dt
                     end = _safe_dt(s.get("deadline") or s.get("endDate") or s.get("end_date"))
                     if end:
                         end_dt = end.replace(tzinfo=None)
@@ -978,7 +978,7 @@ async def learner_submit_stage_data(
     if not target_stage:
         raise HTTPException(status_code=404, detail="Stage not found")
 
-    from stage_access_control import check_stage_submission_access
+    from ..stage_access_control import check_stage_submission_access
     await check_stage_submission_access(
         event_id=str(event_id),
         user_id=uid,
@@ -988,7 +988,7 @@ async def learner_submit_stage_data(
     )
         
     # Check deadline
-    from services.opportunity_service import _safe_dt
+    from ..services.opportunity_service import _safe_dt
     end = _safe_dt(target_stage.get("deadline") or target_stage.get("endDate") or target_stage.get("end_date"))
     if end:
         end_dt = end.replace(tzinfo=None)

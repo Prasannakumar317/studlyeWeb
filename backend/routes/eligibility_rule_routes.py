@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends
-from .db import db
+from ..db import db
 from models.eligibility_models import EligibilityRule, RuleStatus
 from datetime import datetime
 
@@ -7,7 +7,7 @@ router = APIRouter(prefix="/api/v1/certificates/rules", tags=["Eligibility Rules
 
 from fastapi import APIRouter, HTTPException, Depends
 from typing import List
-from .db import db
+from ..db import db
 from models.eligibility_models import EligibilityRule, RuleStatus, RuleType
 from datetime import datetime
 from bson import ObjectId

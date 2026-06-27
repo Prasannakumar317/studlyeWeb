@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Body, Depends, File, UploadFile, Form, Query
-from services.event_service import (
+from ..services.event_service import (
     create_event,
     get_all_events,
     get_event_by_id,
@@ -8,12 +8,12 @@ from services.event_service import (
     update_event_status
 )
 from typing import List, Optional
-from .auth_institution import get_auth_user, get_auth_user_optional, assert_institution_owns_event
+from ..auth_institution import get_auth_user, get_auth_user_optional, assert_institution_owns_event
 from bson import ObjectId
 import os
 import uuid
 import asyncio
-from .db import events_col
+from ..db import events_col
 from datetime import datetime
 
 router = APIRouter(prefix="/api/v1/events", tags=["Events"])
@@ -433,7 +433,7 @@ async def get_event_dashboard_data(
     """
     from db import participants_col, quizzes_col, teams_col, submissions_col, submission_data_col, scores_col
     from routes.registration_flow_routes import resolve_event_id
-    from services.submission_format import summarize_submission_data
+    from ..services.submission_format import summarize_submission_data
     import logging
     logger = logging.getLogger("event_routes")
 

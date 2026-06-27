@@ -3,7 +3,7 @@ from bson import ObjectId
 from datetime import datetime
 
 from .db import db, participants_col, events_col, users_col, notifications_col
-from services.event_workflow_service import workflow_service
+from .services.event_workflow_service import workflow_service
 
 EVENT_ID = '6a1923bdbcdebc6f5fff4fbb'
 USER_ID = 'e2e_user_1'
@@ -57,7 +57,7 @@ async def main():
 
     # Enqueue email via email_queue_service
     try:
-        from services.email_queue_service import enqueue_email
+        from .services.email_queue_service import enqueue_email
         # Determine recipient email
         p_email = participant.get('email')
         if not p_email and participant.get('user_id'):

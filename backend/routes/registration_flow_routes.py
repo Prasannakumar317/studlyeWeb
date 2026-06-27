@@ -3,7 +3,7 @@ Decoupled Onboarding & Registration Engine Router
 """
 import os
 import uuid
-from stage_access_control import check_stage_deadline
+from ..stage_access_control import check_stage_deadline
 import traceback
 import json
 import csv
@@ -11,16 +11,16 @@ import io
 import logging
 from fastapi import APIRouter, HTTPException, Depends, Body, File, UploadFile, status, Query
 from fastapi.responses import StreamingResponse
-from .auth_institution import get_auth_user
-from .db import db, user_profiles_col, registrations_col, events_col, participants_col, users_col, opportunities_col, announcements_col, announcement_audit_col
+from ..auth_institution import get_auth_user
+from ..db import db, user_profiles_col, registrations_col, events_col, participants_col, users_col, opportunities_col, announcements_col, announcement_audit_col
 from bson import ObjectId
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 from pydantic import BaseModel
 import shutil
 import asyncio
-from services.registration_service import validate_event_restrictions
-from services.email_service import send_notification_email
+from ..services.registration_service import validate_event_restrictions
+from ..services.email_service import send_notification_email
 
 async def resolve_event_id(event_id: str) -> str:
     """
@@ -844,7 +844,7 @@ async def announce_event(event_id: str, payload: dict = Body(...), user: dict = 
             raise HTTPException(status_code=403, detail="You do not have permission to send announcements for this event")
 
         # Create background announcement job
-        from services.announcement_service import create_announcement_job
+        from ..services.announcement_service import create_announcement_job
 
         announcement_id = await create_announcement_job(event, subject, body, user, limit=limit)
 
@@ -1116,7 +1116,7 @@ async def submit_event_registration(event_id: str, request: ApplyRegistrationReq
         final_team_name = None
         
         if request.team_action and request.team_payload:
-            from services.team_service import create_team, create_solo_team, generate_invite_code, join_team_with_code
+            from ..services.team_service import create_team, create_solo_team, generate_invite_code, join_team_with_code
             
             action = request.team_action.upper()
             if action == "INDIVIDUAL":
@@ -1466,8 +1466,8 @@ async def notify_approved_participants(
         event = await assert_institution_owns_event(event_id, user)
         event_id = await resolve_event_id(event_id)
 
-        from services.email_queue_service import enqueue_email
-        from services.email_template_service import get_active_template, render_template
+        from ..services.email_queue_service import enqueue_email
+        from ..services.email_template_service import get_active_template, render_template
 
         frontend_url = os.getenv("FRONTEND_URL", "")
         app_logo_url = f"{frontend_url}/images/studlyf.png" if frontend_url else ""

@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from typing import List
 from ..db import db
 from models.email_models import EmailDeliveryRecord, EmailStatus
-from services.email_provider import EmailProvider
+from .email_provider import EmailProvider
 
 logger = logging.getLogger("email_service")
 
@@ -33,7 +33,7 @@ class EmailDeliveryService:
 
     async def process_email(self, email_job: dict):
         # Render template
-        from services.email_template_service import render_email_template
+        from .email_template_service import render_email_template
         body = render_email_template(email_job["template_type"], email_job["metadata"])
         
         attachments = []

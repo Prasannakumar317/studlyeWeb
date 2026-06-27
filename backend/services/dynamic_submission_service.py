@@ -3,19 +3,19 @@ Dynamic Submission Service - Handle stage submissions with admin-defined fields
 """
 
 from ..db import submission_data_col, participants_col, events_col, users_col, teams_col, opportunities_col, opportunity_applications_col
-from notification_service import notification_service
+from ..notification_service import notification_service
 from bson import ObjectId
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 import asyncio
 import os
-from services.field_validation import (
+from .field_validation import (
     normalize_stage_fields,
     validate_file_value,
     sanitize_submission_data_for_client,
     persist_submission_file_fields,
 )
-from services.submission_format import format_submission_timestamp, resolve_notification_action_url
+from .submission_format import format_submission_timestamp, resolve_notification_action_url
 
 
 async def _resolve_event_id(event_id: str) -> str:
@@ -501,8 +501,8 @@ async def submit_stage_data(
 
         async def _send_confirmation_email():
             try:
-                from services.email_service import send_notification_email
-                from services.email_template_service import get_active_template, render_template
+                from .email_service import send_notification_email
+                from .email_template_service import get_active_template, render_template
 
                 participant_email = participant.get("email") or ""
                 if not participant_email:

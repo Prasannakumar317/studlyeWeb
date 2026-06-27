@@ -3,7 +3,7 @@ Team Join Request Routes - REST API for team join request workflow
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Body
-from services.team_join_request_service import (
+from ..services.team_join_request_service import (
     send_join_request,
     send_join_request_by_code,
     approve_join_request,
@@ -12,8 +12,8 @@ from services.team_join_request_service import (
     get_team_join_requests,
     get_user_sent_requests,
 )
-from routes.auth import get_current_user as get_auth_user
-from stage_access_control import check_stage_deadline
+from .auth import get_current_user as get_auth_user
+from ..stage_access_control import check_stage_deadline
 
 router = APIRouter(prefix="/api/v1/teams/requests", tags=["Team Join Requests"])
 

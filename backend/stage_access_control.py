@@ -8,7 +8,7 @@ from fastapi import HTTPException
 from .db import participants_col, opportunities_col, events_col, teams_col, submission_data_col
 from datetime import datetime, timezone
 from bson import ObjectId
-from services.stage_service import get_event_stages
+from .services.stage_service import get_event_stages
 from typing import Optional, List, Dict, Any
 import asyncio
 
@@ -686,7 +686,7 @@ async def get_all_stages_access(event_id: str, user_id: str) -> Dict[str, Any]:
         if sid and sid in event_stage_fields:
             raw_fields = event_stage_fields[sid] or raw_fields
         try:
-            from services.field_validation import normalize_stage_fields
+            from .services.field_validation import normalize_stage_fields
             state["fields"] = normalize_stage_fields(raw_fields)
         except Exception:
             state["fields"] = raw_fields

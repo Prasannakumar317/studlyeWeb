@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Body, Depends
 from typing import Optional, Tuple, Any, Dict
 from bson import ObjectId
 from datetime import datetime, timezone
-from .auth_institution import get_auth_user_optional
+from ..auth_institution import get_auth_user_optional
 
 router = APIRouter(prefix="/api/evaluation", tags=["Evaluation"])
 
@@ -65,7 +65,7 @@ def _event_criteria(event: Optional[dict], stage_id: str = None) -> list:
 
 
 def _sanitize_submission_data(data: dict) -> dict:
-    from services.submission_format import summarize_submission_data
+    from ..services.submission_format import summarize_submission_data
 
     sanitized = summarize_submission_data(data or {})
     for field in ("user_email", "user_name", "email", "contact", "phone"):
@@ -358,7 +358,7 @@ async def submit_evaluation(
     )
 
     # Auto-advance participant if score meets shortlist threshold
-    from stage_access_control import auto_advance_participant_on_score
+    from ..stage_access_control import auto_advance_participant_on_score
     await auto_advance_participant_on_score(
         str(submission.get("event_id", "")),
         str(submission["_id"]),
@@ -396,7 +396,7 @@ async def submit_evaluation(
 
     # Refresh leaderboard in background
     import asyncio
-    from services.leaderboard_service import leaderboard_service
+    from ..services.leaderboard_service import leaderboard_service
     async def _refresh_lb():
         try:
             await leaderboard_service.calculate_event_leaderboard(str(submission.get("event_id", "")))
@@ -428,7 +428,7 @@ async def download_evaluation_file(token_or_id: str, field_id: str):
     if not sub:
         raise HTTPException(status_code=404, detail="Invalid or expired evaluation link")
 
-    from services.submission_file_io import load_submission_field_file
+    from ..services.submission_file_io import load_submission_field_file
 
     value = (sub.get("data") or {}).get(field_id)
     if isinstance(value, str) and value.startswith("http"):

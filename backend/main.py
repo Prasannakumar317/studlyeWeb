@@ -215,7 +215,7 @@ async def startup_event():
     # Spawn background stage email queue worker if database is available
     try:
         if db.db is not None:
-            from services.email_queue_service import start_email_queue_worker
+            from .services.email_queue_service import start_email_queue_worker
             asyncio.create_task(start_email_queue_worker())
             logger.info("Background Stage Email Queue Worker spawned successfully")
         else:
@@ -264,7 +264,7 @@ async def startup_event():
     # Start background scheduler for reminders (non-fatal)
     try:
         from apscheduler.schedulers.asyncio import AsyncIOScheduler
-        from services.reminder_service import reminder_service
+        from .services.reminder_service import reminder_service
 
         scheduler = AsyncIOScheduler()
         scheduler.add_job(reminder_service.send_judge_reminders, 'interval', hours=12)
@@ -279,7 +279,7 @@ async def startup_event():
 
     # Launch certificate background worker
     try:
-        from services.institutional_certificate_service import process_certificate_jobs
+        from .services.institutional_certificate_service import process_certificate_jobs
         asyncio.create_task(process_certificate_jobs())
         logger.info("Certificate generation background worker started")
     except Exception as e:
@@ -616,7 +616,7 @@ async def upload_temp_image(request: Request, file: UploadFile = File(...), publ
         raise HTTPException(status_code=500, detail='Upload failed')
 
 from domain_models import Institution, Event, Participant, Team, Submission, Judge, Score, Notification, LeaderboardEntry, Certificate
-from services.email_service import send_notification_email, get_registration_template, get_email_verification_template
+from .services.email_service import send_notification_email, get_registration_template, get_email_verification_template
 from .auth_utils import get_password_hash, verify_password, create_access_token, decode_access_token
 # from routes import upgrade_routes
 from . import integration_routes
@@ -867,7 +867,7 @@ async def startup_db_client():
 async def shutdown_db_client():
     from db import db
     await db.disconnect()
-    from services.redis_pubsub import close as close_redis
+    from .services.redis_pubsub import close as close_redis
     await close_redis()
 
 # --- Activate Rate Limiting ---
@@ -904,7 +904,7 @@ app.include_router(event_certificate_routes.verification_router)
 app.include_router(achievement_registry_routes.router)
 app.include_router(registration_flow_routes.router)
 app.include_router(stage_endpoints.router)
-from routes import company_simulator
+from .routes import company_simulator
 app.include_router(company_simulator.router, prefix="/api/company-simulator")
 
 
@@ -5529,7 +5529,7 @@ async def admin_issue_certificates(event_id: str, payload: dict, x_admin_email: 
             raise HTTPException(status_code=400, detail="user_ids required")
 
         from bson import ObjectId
-        from services.institutional_certificate_service import certificate_service
+        from .services.institutional_certificate_service import certificate_service
 
         # Resolve event
         try:
@@ -5602,8 +5602,8 @@ class CareerExplanationRequest(BaseModel):
 @app.post("/api/career/analyze")
 async def analyze_career(req: CareerAnalysisRequest):
     try:
-        from services.skill_extractor import extract_skills_and_inferences
-        from services.role_matcher import match_user_to_roles
+        from .services.skill_extractor import extract_skills_and_inferences
+        from .services.role_matcher import match_user_to_roles
         
         profile_dict = req.dict()
         skill_vector, inferences = extract_skills_and_inferences(profile_dict)
@@ -5621,7 +5621,7 @@ async def analyze_career(req: CareerAnalysisRequest):
 @app.post("/api/career/explain")
 async def explain_career(req: CareerExplanationRequest):
     try:
-        from services.career_taxonomy import ROLE_DATABASE
+        from .services.career_taxonomy import ROLE_DATABASE
         role_name = req.career_path
         
         # Look up defaults in the taxonomy database
@@ -5768,8 +5768,8 @@ async def get_career_identity(req: CareerOnboardingRequest):
 @app.post("/api/career/explore-paths")
 async def explore_career_paths(req: CareerOnboardingRequest):
     # Old explore-paths wrapper
-    from services.skill_extractor import extract_skills_and_inferences
-    from services.role_matcher import match_user_to_roles
+    from .services.skill_extractor import extract_skills_and_inferences
+    from .services.role_matcher import match_user_to_roles
     import math
     
     profile_dict = req.dict()
@@ -5833,7 +5833,7 @@ async def generate_career_roadmap(req: dict):
     else:
         path_name = req.get("career_path", req.get("path_name", "Career"))
         
-    from services.career_taxonomy import ROLE_DATABASE
+    from .services.career_taxonomy import ROLE_DATABASE
     if path_name in ROLE_DATABASE:
         taxonomy_roadmap = ROLE_DATABASE[path_name].get("roadmap", [])
         if taxonomy_roadmap:
@@ -6484,7 +6484,7 @@ async def forgot_password(data: dict = Body(...)):
         raise HTTPException(status_code=500, detail="Failed to generate reset link")
 
     # Send email via template system
-    from services.platform_notification_service import notify_password_reset
+    from .services.platform_notification_service import notify_password_reset
     reset_link = f"{frontend_url}/#/reset-password?token={token}"
     user_doc = user or await users_col.find_one({"email": {"$regex": f"^{re.escape(email)}$", "$options": "i"}})
     participant_name = (user_doc or {}).get("full_name") or (user_doc or {}).get("name") or "Participant"
@@ -6658,7 +6658,7 @@ async def signup(user_data: UserSignup, request: Request):
     frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
     verification_link = f"{frontend_url}/#/verify-email?token={verification_token}"
     signup_name = user_data.full_name or "Participant"
-    from services.platform_notification_service import notify_email_verification
+    from .services.platform_notification_service import notify_email_verification
     await notify_email_verification(
         recipient_email=email_clean,
         participant_name=signup_name,
@@ -7466,7 +7466,7 @@ async def register_for_event(event_id: str, participant: Participant):
             target_email = user_record.get("email") or participant.user_id
 
         if not is_from_opportunity and target_email:
-            from services.email_template_service import send_template_email
+            from .services.email_template_service import send_template_email
             await send_template_email(
                 template_type="registration_confirmation",
                 recipient=target_email,
@@ -7501,7 +7501,7 @@ async def register_for_event(event_id: str, participant: Participant):
             ))
 
             try:
-                from services.platform_notification_service import notify_new_registration
+                from .services.platform_notification_service import notify_new_registration
                 admins = await users_col.find({
                     "institution_id": str(inst_id),
                     "role": {"$in": ["admin", "institution", "super_admin"]}
@@ -7674,7 +7674,7 @@ async def enroll_course(req: EnrollRequest, current_user: dict = Depends(get_cur
     user_email = current_user.get("sub") or current_user.get("email")
     
     if user_email:
-        from services.email_service import send_notification_email
+        from .services.email_service import send_notification_email
         import asyncio
         track_name = req.trackId.upper()
         # Trigger email in background

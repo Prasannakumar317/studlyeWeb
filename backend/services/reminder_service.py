@@ -1,6 +1,6 @@
 from ..db import events_col, judges_col, submissions_col, notifications_col, audit_logs_col, participants_col
 from bson import ObjectId
-from services.email_service import send_notification_email
+from .email_service import send_notification_email
 import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
@@ -135,8 +135,8 @@ class ReminderService:
             if not isinstance(stages, list):
                 continue
             
-            from services.opportunity_service import _safe_dt
-            from services.email_template_service import get_active_template, render_template
+            from .opportunity_service import _safe_dt
+            from .email_template_service import get_active_template, render_template
             reminder_tmpl = await get_active_template(event_id, event.get("institution_id", ""), "deadline_reminder")
             
             for stage in stages:

@@ -178,7 +178,7 @@ async def get_event_stages(event_id: str) -> List[dict]:
         access_days = 0
         if inst_id:
             try:
-                from services.subscription_service import get_current_plan_rules
+                from .subscription_service import get_current_plan_rules
                 rules = await get_current_plan_rules(inst_id)
                 access_days = int(rules.get("access_days_after_deadline") or 0)
             except Exception:

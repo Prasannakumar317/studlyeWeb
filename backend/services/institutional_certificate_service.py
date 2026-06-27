@@ -13,7 +13,7 @@ except Exception:
 from datetime import datetime, timezone
 from bson import ObjectId
 from ..db import event_certificates_col, cert_templates_col, certificate_jobs_col
-from services.email_template_service import get_active_template, render_template
+from .email_template_service import get_active_template, render_template
 
 
 ACHIEVEMENT_TYPES = {
@@ -300,8 +300,8 @@ class InstitutionalCertificateService:
 
     async def issue_ranked_event_certificates(self, event_id: str, rankings: list, send_email: bool = True, template_id: str | None = None) -> list:
         from db import events_col, participants_col, teams_col, users_col
-        from services.email_template_service import get_active_template, render_template
-        from services.email_service import (
+        from .email_template_service import get_active_template, render_template
+        from .email_service import (
             send_notification_email,
             get_certificate_issued_template,
             get_winner_announcement_template,
@@ -486,7 +486,7 @@ async def process_certificate_jobs():
     """Background worker: polls certificate_jobs_col for pending jobs and processes them."""
     import asyncio
     from db import certificate_jobs_col, events_col, participants_col, users_col, event_certificates_col
-    from services.email_template_service import send_template_email
+    from .email_template_service import send_template_email
 
     while True:
         try:
@@ -532,7 +532,7 @@ async def process_certificate_jobs():
                 await event_certificates_col.insert_many(pending_records)
                 for email, subj, body in pending_email_jobs:
                     try:
-                        from services.email_service import send_notification_email
+                        from .email_service import send_notification_email
                         await send_notification_email(email, subj, body)
                     except Exception as e:
                         print(f"[CERT BG EMAIL FAIL] batch-send: {e}")

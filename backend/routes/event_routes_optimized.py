@@ -7,7 +7,7 @@ OPTIMIZED Event Routes with Performance Fixes:
 """
 
 from fastapi import APIRouter, HTTPException, Body, Depends, File, UploadFile, Form, Query
-from services.event_service import (
+from ..services.event_service import (
     create_event,
     get_all_events,
     get_event_by_id,
@@ -16,11 +16,11 @@ from services.event_service import (
     update_event_status
 )
 from typing import List, Optional
-from .auth_institution import get_auth_user, get_auth_user_optional, assert_institution_owns_event
+from ..auth_institution import get_auth_user, get_auth_user_optional, assert_institution_owns_event
 from bson import ObjectId
 import os
 import uuid
-from .db import events_col, participants_col, teams_col, users_col, opportunities_col, opportunity_applications_col, scores_col, submissions_col
+from ..db import events_col, participants_col, teams_col, users_col, opportunities_col, opportunity_applications_col, scores_col, submissions_col
 from datetime import datetime, timezone
 import logging
 

@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
 from bson import ObjectId
 from .db import submissions_col, scores_col, judges_col, events_col, users_col, notifications_col
-from services.email_service import send_notification_email
+from .services.email_service import send_notification_email
 from .notification_helpers import notify_institution
 
 class ManualEvaluationService:
@@ -139,7 +139,7 @@ class ManualEvaluationService:
         await self._notify_participant_of_evaluation(submission, evaluation_record)
         
         # Update leaderboard
-        from services.leaderboard_service import leaderboard_service
+        from .services.leaderboard_service import leaderboard_service
         await leaderboard_service.calculate_event_leaderboard(submission.get("event_id"))
         
         return {

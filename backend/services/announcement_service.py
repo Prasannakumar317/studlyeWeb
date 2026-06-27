@@ -4,8 +4,8 @@ from datetime import datetime
 from bson import ObjectId
 
 from ..db import announcements_col, announcement_audit_col, users_col
-from services.email_queue_service import enqueue_email
-from services.registration_service import validate_event_restrictions
+from .email_queue_service import enqueue_email
+from .registration_service import validate_event_restrictions
 
 logger = logging.getLogger("announcement_service")
 

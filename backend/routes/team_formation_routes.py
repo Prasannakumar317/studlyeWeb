@@ -3,8 +3,8 @@ Team Formation Routes - Handle team formation emails and notifications
 """
 from fastapi import APIRouter, HTTPException, Body
 import logging
-from .db import users_col
-from services.email_service import send_notification_email
+from ..db import users_col
+from ..services.email_service import send_notification_email
 
 logger = logging.getLogger(__name__)
 

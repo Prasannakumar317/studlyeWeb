@@ -85,7 +85,7 @@ async def _create_opportunity_for_event(event_data: dict, opportunities_col):
 async def _seed_default_email_templates(event_data: dict):
     """Helper: Seed default email templates for a new event."""
     try:
-        from services.email_template_service import seed_default_templates
+        from .email_template_service import seed_default_templates
         event_id = str(event_data.get("_id", ""))
         institution_id = str(event_data.get("institution_id", ""))
         if event_id and institution_id:

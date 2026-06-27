@@ -10,7 +10,7 @@ from ..db import (
     participants_col, notifications_col, events_col,
     users_col, institutions_col, messages_col
 )
-from services.email_service import send_notification_email
+from .email_service import send_notification_email
 from bson import ObjectId
 
 class MessageType(str, Enum):

@@ -3,8 +3,8 @@ Notification Routes - Comprehensive notification system
 """
 from fastapi import APIRouter, HTTPException, Body, Depends, Query
 from typing import List, Optional
-from .auth_institution import get_auth_user, assert_institution_scope
-from notification_service import notification_service
+from ..auth_institution import get_auth_user, assert_institution_scope
+from ..notification_service import notification_service
 
 router = APIRouter(prefix="/api/notifications", tags=["Notifications"])
 

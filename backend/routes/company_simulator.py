@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, Header, Depends
 from pydantic import BaseModel
 from typing import List, Dict, Optional
 from groq import Groq
-from .auth_institution import get_auth_user
+from ..auth_institution import get_auth_user
 
 router = APIRouter()
 

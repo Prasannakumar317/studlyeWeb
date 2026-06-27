@@ -437,7 +437,7 @@ async def check_and_notify_expiring_plan(institution_id: str):
 
 async def _send_expiry_notification(institution_id: str, end_date: datetime, label: str, message: str):
     from db import institutions_col
-    from services.email_template_service import send_template_email
+    from .email_template_service import send_template_email
 
     inst = await institutions_col.find_one({"institution_id": institution_id})
     if not inst:

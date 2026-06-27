@@ -6,7 +6,7 @@ from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Any, Optional
 from bson import ObjectId
 from .db import notifications_col, users_col, institutions_col
-from services.email_service import send_notification_email
+from .services.email_service import send_notification_email
 import os
 
 class NotificationService:
@@ -305,7 +305,7 @@ class NotificationService:
         if not user_email:
             return
         
-        from services.submission_format import resolve_notification_action_url
+        from .services.submission_format import resolve_notification_action_url
 
         action_url = await resolve_notification_action_url(
             notification.get("event_id"),

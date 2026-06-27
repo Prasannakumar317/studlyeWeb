@@ -3,7 +3,7 @@ from typing import List, Optional
 from bson import ObjectId
 from datetime import datetime
 import secrets
-from .db import (
+from ..db import (
     rubrics_col, 
     submissions_col, 
     submission_scores_col, 
@@ -16,7 +16,7 @@ from .db import (
     certificates_col,
     judges_col
 )
-from .auth_institution import get_auth_user
+from ..auth_institution import get_auth_user
 
 router = APIRouter(prefix="/api/judging", tags=["Hackathon Judging"])
 
@@ -268,7 +268,7 @@ async def evaluate_submission(data: dict = Body(...)):
         )
 
     # Auto-advance participant if score meets shortlist threshold
-    from stage_access_control import auto_advance_participant_on_score
+    from ..stage_access_control import auto_advance_participant_on_score
     # Resolve event_id from the submission
     sub_doc_ev = await submission_data_col.find_one(
         {"_id": ObjectId(submission_id)},

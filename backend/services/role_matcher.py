@@ -1,5 +1,5 @@
 from typing import Dict, List, Any
-from services.career_taxonomy import ROLE_DATABASE, get_skill_display_name
+from .career_taxonomy import ROLE_DATABASE, get_skill_display_name
 
 def match_user_to_roles(user_vector: Dict[str, float], profile: Dict[str, Any], limit: int = 6) -> List[Dict[str, Any]]:
     """

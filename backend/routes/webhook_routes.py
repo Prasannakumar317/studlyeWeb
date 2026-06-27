@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Request
-from .db import db
+from ..db import db
 from models.email_models import EmailStatus
 from datetime import datetime
 

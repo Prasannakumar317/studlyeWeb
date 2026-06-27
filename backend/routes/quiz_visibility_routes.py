@@ -4,8 +4,8 @@ Handles quiz visibility management based on stage configuration
 """
 from fastapi import APIRouter, HTTPException, Body, Depends, Query
 from typing import List, Optional
-from .auth_institution import get_auth_user, assert_institution_scope, assert_institution_owns_event
-from quiz_visibility_service import quiz_visibility_service
+from ..auth_institution import get_auth_user, assert_institution_scope, assert_institution_owns_event
+from ..quiz_visibility_service import quiz_visibility_service
 
 router = APIRouter(prefix="/api/quiz-visibility", tags=["Quiz Visibility"])
 

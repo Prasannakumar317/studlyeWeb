@@ -24,7 +24,7 @@ def get_cache(key: str):
 def set_cache(key: str, data: any):
     _cache[key] = (data, datetime.now())
 from .routes.auth import get_current_user, require_role
-from services.email_service import (
+from .services.email_service import (
     send_notification_email,
     get_certificate_template,
     get_shortlist_template,
@@ -37,14 +37,14 @@ from services.email_service import (
     get_event_published_template,
 )
 from .services.institutional_analytics_service import analytics_service
-from services.institutional_certificate_service import certificate_service
-from services.leaderboard_service import leaderboard_service
+from .services.institutional_certificate_service import certificate_service
+from .services.leaderboard_service import leaderboard_service
 from .db import db, leaderboard_col, events_col, participants_col, certificates_col, notifications_col, institutions_col, users_col, teams_col, submissions_col, submission_data_col, scores_col, results_col, audit_logs_col, opportunities_col, opportunity_applications_col, hackathon_submissions_col, event_certificates_col, avatars_col
 from bson import ObjectId
-from services.audit_service import log_admin_action
+from .services.audit_service import log_admin_action
 from .notification_helpers import notify_institution
 
-from services.subscription_service import validate_new_listing_against_plan
+from .services.subscription_service import validate_new_listing_against_plan
 import logging
 
 # Ensure upload directory exists
@@ -311,7 +311,7 @@ async def _list_submissions_for_judge_user(
 @router.post("/test-email")
 async def test_email_configuration(user: dict = Depends(get_auth_user)):
     """Verifies that SMTP settings are working by sending a test email."""
-    from services.email_service import send_notification_email
+    from .services.email_service import send_notification_email
     email = user.get("email")
     if not email:
         raise HTTPException(status_code=400, detail="Authenticated user has no email")
@@ -334,7 +334,7 @@ async def get_communication_variables(user: dict = Depends(get_auth_user)):
     """
     Exposes the central AVAILABLE_STAGE_VARIABLES registry to the frontend.
     """
-    from services.email_template_service import AVAILABLE_STAGE_VARIABLES
+    from .services.email_template_service import AVAILABLE_STAGE_VARIABLES
     return {
         "status": "success",
         "variables": AVAILABLE_STAGE_VARIABLES
@@ -421,7 +421,7 @@ Please log in to your StudLyf Event Hub to check details and updated deadlines.
 Good luck in the next round!"""
 
     # Validate placeholders
-    from services.email_template_service import validate_stage_email_placeholders
+    from .services.email_template_service import validate_stage_email_placeholders
     invalid_vars = validate_stage_email_placeholders(subject_override or "", body_markdown or "")
     if invalid_vars:
         raise HTTPException(
@@ -442,8 +442,8 @@ Good luck in the next round!"""
         "event_link": "http://localhost:3000/dashboard/learner",
     }
     
-    from services.email_template_service import render_stage_custom_email
-    from services.email_service import send_notification_email
+    from .services.email_template_service import render_stage_custom_email
+    from .services.email_service import send_notification_email
     
     subject, html_body = render_stage_custom_email(subject_override, body_markdown, mock_context)
     
@@ -1069,7 +1069,7 @@ async def get_event_participants(event_id: str, user: dict = Depends(get_auth_us
             event_doc = await opportunities_col.find_one({"event_link_id": event_id})
         inst_id = (event_doc or {}).get("institution_id")
         if inst_id:
-            from services.subscription_service import get_current_plan_rules
+            from .services.subscription_service import get_current_plan_rules
             rules = await get_current_plan_rules(inst_id)
             max_views = rules.get("max_app_views")
             if max_views is not None and len(students) > int(max_views):
@@ -1217,7 +1217,7 @@ async def delete_event_team(
 async def backfill_portal_participants_route(institution_id: str, user: dict = Depends(get_auth_user)):
     """One-time sync: portal applications → ``participants`` for all events owned by this institution."""
     assert_institution_scope(institution_id, user)
-    from services.opportunity_service import backfill_portal_participants_for_institution
+    from .services.opportunity_service import backfill_portal_participants_for_institution
 
     return await backfill_portal_participants_for_institution(institution_id)
 
@@ -1225,7 +1225,7 @@ async def backfill_portal_participants_route(institution_id: str, user: dict = D
 @router.patch("/opportunity-applications/status")
 async def institution_review_opportunity_application(data: dict = Body(...), user: dict = Depends(get_auth_user)):
     """Set portal application status (pending | accepted | rejected | shortlisted). Institution-only."""
-    from services.opportunity_service import set_opportunity_application_review_status
+    from .services.opportunity_service import set_opportunity_application_review_status
 
     institution_id = data.get("institution_id")
     if not institution_id:
@@ -1255,7 +1255,7 @@ async def trigger_global_reminders(institution_id: str = Query(...), user: dict 
     linked to this institution.
     """
     assert_institution_scope(institution_id, user)
-    from services.reminder_service import reminder_service
+    from .services.reminder_service import reminder_service
     
     # We run it as a task to not block the request
     asyncio.create_task(reminder_service.send_participant_reminders())
@@ -1275,7 +1275,7 @@ async def send_event_deadline_reminders(event_id: str, user: dict = Depends(get_
         raise HTTPException(status_code=404, detail="Event not found")
         
     # Find next deadline
-    from services.opportunity_service import _safe_dt
+    from .services.opportunity_service import _safe_dt
     now = datetime.utcnow()
     stages = ev.get("stages") or []
     next_stage = None
@@ -1839,7 +1839,7 @@ async def send_bulk_selection_emails(event_id: str, data: dict, user: dict = Dep
     
     from db import teams_col, users_col, notifications_col
     from datetime import datetime
-    from services.email_template_service import get_active_template, render_template, render_stage_custom_email
+    from .services.email_template_service import get_active_template, render_template, render_stage_custom_email
     
     # Determine template type based on whether there's a custom message
     custom_msg = data.get("custom_message") or data.get("message")
@@ -1903,7 +1903,7 @@ async def send_bulk_selection_emails(event_id: str, data: dict, user: dict = Dep
                         body = f"<p>Your team has qualified for <strong>{next_stage}</strong> in <strong>{event_title}</strong>.</p>"
                     
                     # Enqueue email in the persistent background queue
-                    from services.email_queue_service import enqueue_email
+                    from .services.email_queue_service import enqueue_email
                     await enqueue_email(
                         recipient_email, 
                         subject, 
@@ -1974,7 +1974,7 @@ async def send_bulk_selection_emails(event_id: str, data: dict, user: dict = Dep
                         body = f"<p>Team <strong>'{team_name}'</strong> has qualified for <strong>{next_stage}</strong> in <strong>{event_title}</strong>.</p>"
                 
                 # Enqueue email in the persistent background queue
-                from services.email_queue_service import enqueue_email
+                from .services.email_queue_service import enqueue_email
                 await enqueue_email(
                     member_email, 
                     subject, 
@@ -2957,7 +2957,7 @@ async def finalize_event(event_id: str, template_id: str | None = None):
         )
 
     # [INTEGRATION ENHANCEMENT]
-    from services.leaderboard_service import leaderboard_service
+    from .services.leaderboard_service import leaderboard_service
     from db import results_col
     # Resolving undefined variable 'final_rankings' from original code by using the dynamic service
     final_rankings = await leaderboard_service.calculate_event_leaderboard(event_id)
@@ -3195,7 +3195,7 @@ async def export_institution_summary_csv(institution_id: str, user: dict = Depen
     import csv
     import io
     from fastapi.responses import StreamingResponse
-    from services.institutional_analytics_service import analytics_service
+    from .services.institutional_analytics_service import analytics_service
     
     data = await analytics_service.get_kpi_summary(institution_id)
     
@@ -3248,7 +3248,7 @@ async def download_certificate(certificate_id: str):
         raise HTTPException(status_code=404, detail="Certificate not found or invalid.")
 
     from fastapi.responses import FileResponse
-    from services.certificate_service import certificate_service as pdf_certificate_service
+    from .services.certificate_service import certificate_service as pdf_certificate_service
 
     issued_at = cert.get("issued_at") or cert.get("issued_date") or datetime.utcnow()
     issued_date = issued_at.strftime("%B %d, %Y") if hasattr(issued_at, "strftime") else str(issued_at)
@@ -3737,7 +3737,7 @@ async def judge_download_submission_file(
 ):
     """Judge download of an assigned submission file (PDF/PPT/etc.)."""
     from fastapi.responses import Response
-    from services.submission_file_io import load_submission_field_file
+    from .services.submission_file_io import load_submission_field_file
 
     email = (user.get("email") or "").strip().lower()
     if not email:
@@ -3800,7 +3800,7 @@ async def get_judge_event_criteria(event_id: str, user: dict = Depends(get_auth_
 @router.get("/judge/my-invitations")
 async def judge_my_invitations(user: dict = Depends(get_auth_user)):
     """Pending judge invitations for the logged-in account email."""
-    from services.judge_service import get_pending_invitations_for_email
+    from .services.judge_service import get_pending_invitations_for_email
 
     email = (user.get("email") or "").strip().lower()
     if not email:
@@ -3811,7 +3811,7 @@ async def judge_my_invitations(user: dict = Depends(get_auth_user)):
 @router.post("/judge/respond-invitation")
 async def judge_respond_invitation(body: dict, user: dict = Depends(get_auth_user)):
     """Judge accepts or declines (matched by logged-in account email, not institution admin)."""
-    from services.judge_service import respond_judge_invitation
+    from .services.judge_service import respond_judge_invitation
 
     accept = bool(body.get("accept", True))
     email = (user.get("email") or "").strip().lower()
@@ -4002,7 +4002,7 @@ async def save_judge_score(score_data: dict, user: dict = Depends(get_auth_user)
     # Refresh leaderboard in background
     async def _refresh_lb():
         try:
-            from services.leaderboard_service import leaderboard_service
+            from .services.leaderboard_service import leaderboard_service
             await leaderboard_service.calculate_event_leaderboard(str(event_id))
         except Exception:
             pass
@@ -4194,8 +4194,8 @@ async def update_team_status(event_id: str, team_id: str, status_update: dict, u
     """Updates team status, syncs all members, advances stage on approval, sends unlock email."""
     await assert_institution_owns_event(event_id, user)
     from db import participants_col, teams_col, notifications_col, users_col, opportunity_applications_col, opportunities_col
-    from services.email_service import send_notification_email
-    from services.email_template_service import get_active_template, render_template, render_stage_custom_email
+    from .services.email_service import send_notification_email
+    from .services.email_template_service import get_active_template, render_template, render_stage_custom_email
 
     raw_status = str(status_update.get("status") or "").lower().strip()
     participant_status = "shortlisted" if raw_status in ("approved", "shortlisted", "accepted") else raw_status
@@ -4455,7 +4455,7 @@ async def send_status_email(event_id: str, email_data: dict, user: dict = Depend
     """
     
     # Send emails to all team members
-    from services.email_service import send_notification_email
+    from .services.email_service import send_notification_email
     sent_count = 0
     for email in emails:
         try:
@@ -4544,7 +4544,7 @@ def _format_deadline(dl: str) -> str:
 
 async def _notify_deadline_extensions(event_id: str, changed_deadlines: list):
     """Send deadline extension notifications to all participants."""
-    from services.email_template_service import get_active_template, render_template
+    from .services.email_template_service import get_active_template, render_template
     event = await events_col.find_one({"_id": ObjectId(event_id)})
     if not event:
         return
@@ -4610,13 +4610,13 @@ async def _notify_new_opportunity(event_id: str):
         source_event = await _ev_col.find_one({"_id": ObjectId(event_id)})
     except Exception:
         pass
-    from services.opportunity_notification_service import send_new_opportunity_email
+    from .services.opportunity_notification_service import send_new_opportunity_email
     await send_new_opportunity_email(opp, event=source_event)
 
     # Also notify institution admin via template system
     try:
         from db import events_col, users_col
-        from services.platform_notification_service import notify_event_published
+        from .services.platform_notification_service import notify_event_published
         event = await events_col.find_one({"_id": ObjectId(event_id)})
         if event:
             iid = event.get("institution_id")
@@ -4910,7 +4910,7 @@ async def add_event_stage(event_id: str, stage: dict, user: dict = Depends(get_a
     if comm:
         subject_ovr = comm.get("email_subject_override") or ""
         body_md = comm.get("email_body_markdown") or ""
-        from services.email_template_service import validate_stage_email_placeholders
+        from .services.email_template_service import validate_stage_email_placeholders
         invalid_vars = validate_stage_email_placeholders(subject_ovr, body_md)
         if invalid_vars:
             raise HTTPException(
@@ -4929,7 +4929,7 @@ async def add_event_stage(event_id: str, stage: dict, user: dict = Depends(get_a
     )
     
     # Audit log recording
-    from services.audit_service import log_admin_action
+    from .services.audit_service import log_admin_action
     admin_email = user.get("email") or "admin@institution.com"
     await log_admin_action(
         admin_email,
@@ -4947,7 +4947,7 @@ async def update_event_stage(event_id: str, stage_id: str, stage_update: dict, u
     if comm:
         subject_ovr = comm.get("email_subject_override") or ""
         body_md = comm.get("email_body_markdown") or ""
-        from services.email_template_service import validate_stage_email_placeholders
+        from .services.email_template_service import validate_stage_email_placeholders
         invalid_vars = validate_stage_email_placeholders(subject_ovr, body_md)
         if invalid_vars:
             raise HTTPException(
@@ -4980,7 +4980,7 @@ async def update_event_stage(event_id: str, stage_id: str, stage_update: dict, u
     )
     
     # Audit log recording
-    from services.audit_service import log_admin_action
+    from .services.audit_service import log_admin_action
     admin_email = user.get("email") or "admin@institution.com"
     details = f"Updated stage '{stage_update.get('name')}' (ID: {stage_id}) in event {event_id}."
     if comm:
@@ -5062,7 +5062,7 @@ async def delete_event_stage(event_id: str, stage_id: str, user: dict = Depends(
     )
     
     # Audit log recording
-    from services.audit_service import log_admin_action
+    from .services.audit_service import log_admin_action
     admin_email = user.get("email") or "admin@institution.com"
     await log_admin_action(
         admin_email,
@@ -5093,7 +5093,7 @@ async def advance_participants(
     
     await assert_institution_owns_event(event_id, user)
     from db import notifications_col, events_col
-    from services.event_workflow_service import workflow_service
+    from .services.event_workflow_service import workflow_service
     
     event = await events_col.find_one({"_id": ObjectId(event_id)})
     event_title = event.get("title", "Event")
@@ -5151,8 +5151,8 @@ async def advance_participants(
                 )
 
     # 3. Trigger Dynamic Notifications/Emails for each participant
-    from services.email_service import send_notification_email
-    from services.email_template_service import get_active_template, render_template, render_stage_custom_email
+    from .services.email_service import send_notification_email
+    from .services.email_template_service import get_active_template, render_template, render_stage_custom_email
     from db import users_col, teams_col
 
     # Find the stage matching the name next_stage
@@ -5229,7 +5229,7 @@ async def advance_participants(
                 html_body = f"<p>Team <strong>'{recipient_name}'</strong> has qualified for <strong>{next_stage}</strong> in <strong>{event_title}</strong>.</p>"
 
             # Send email to participant via persistent background queue
-            from services.email_queue_service import enqueue_email
+            from .services.email_queue_service import enqueue_email
             if p_email:
                 try:
                     await enqueue_email(
@@ -5304,8 +5304,8 @@ async def add_event_judge(event_id: str, judge_data: dict, user: dict = Depends(
     if any(j.get("email") == judge_data.get("email") for j in current_judges):
         return {"status": "exists", "message": "Judge already assigned"}
     
-    from services.judge_service import create_judge
-    from services.email_service import send_notification_email
+    from .services.judge_service import create_judge
+    from .services.email_service import send_notification_email
 
     judge_record = {
         "event_id": event_id,
@@ -5317,7 +5317,7 @@ async def add_event_judge(event_id: str, judge_data: dict, user: dict = Depends(
         "invitation_token": uuid.uuid4().hex,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
-    from services.judge_service import _judge_invitation_url
+    from .services.judge_service import _judge_invitation_url
     evaluation_url = _judge_invitation_url(judge_record["invitation_token"])
 
     result = await create_judge(judge_record)
@@ -5511,7 +5511,7 @@ async def download_stage_submission_file(
 ):
     """Admin download of an uploaded stage file (avoids multi-MB JSON payloads)."""
     from fastapi.responses import Response
-    from services.submission_file_io import load_submission_field_file
+    from .services.submission_file_io import load_submission_field_file
 
     await assert_institution_owns_event(event_id, user)
     sub = await submission_data_col.find_one({"_id": ObjectId(submission_id)})
@@ -5835,8 +5835,8 @@ async def bulk_shortlist_quiz(
     await assert_institution_owns_event(event_id, user)
     from routes.registration_flow_routes import resolve_event_id
     resolved_eid = await resolve_event_id(event_id)
-    from services.email_queue_service import enqueue_email
-    from services.email_template_service import render_stage_custom_email, get_active_template, render_template
+    from .services.email_queue_service import enqueue_email
+    from .services.email_template_service import render_stage_custom_email, get_active_template, render_template
 
     user_ids = payload.get("user_ids") or []
     if not isinstance(user_ids, list) or not user_ids:
@@ -5907,8 +5907,8 @@ async def notify_shortlisted_participants(
     await assert_institution_owns_event(event_id, user)
     from routes.registration_flow_routes import resolve_event_id
     resolved_eid = await resolve_event_id(event_id)
-    from services.email_queue_service import enqueue_email
-    from services.email_template_service import get_active_template, render_template
+    from .services.email_queue_service import enqueue_email
+    from .services.email_template_service import get_active_template, render_template
     from db import institutions_col
 
     ev = await events_col.find_one({"_id": ObjectId(resolved_eid)})
@@ -6048,7 +6048,7 @@ async def extend_participant_deadline(
     await assert_institution_owns_event(event_id, user)
     from routes.registration_flow_routes import resolve_event_id
     resolved_eid = await resolve_event_id(event_id)
-    from services.email_queue_service import enqueue_email
+    from .services.email_queue_service import enqueue_email
 
     user_id = payload.get("user_id", "").strip()
     new_deadline_str = payload.get("new_deadline", "").strip()
@@ -6097,7 +6097,7 @@ async def extend_participant_deadline(
         stage_name = stage.get("name", f"Stage {stage_index + 1}")
         frontend_url = os.getenv("FRONTEND_URL", "")
         try:
-            from services.email_template_service import render_stage_custom_email, get_active_template, render_template
+            from .services.email_template_service import render_stage_custom_email, get_active_template, render_template
             context = {
                 "team_name": p_name,
                 "event_title": ev.get("title", "Event"),
@@ -6642,7 +6642,7 @@ async def create_pro_event(request: Request, user: dict = Depends(get_auth_user)
 
     # Seed default email templates in background
     try:
-        from services.email_template_service import seed_default_templates
+        from .services.email_template_service import seed_default_templates
         asyncio.create_task(seed_default_templates(str(result.inserted_id), str(iid)))
     except Exception as e:
         logger.error(f"[TEMPLATE SEED] Failed: {str(e)}")
@@ -7617,7 +7617,7 @@ async def list_email_templates(
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
     institution_id = event.get("institution_id", "")
-    from services.email_template_service import get_templates_for_event
+    from .services.email_template_service import get_templates_for_event
     templates = await get_templates_for_event(event_id, institution_id, template_type)
     return templates
 
@@ -7636,7 +7636,7 @@ async def create_email_template(
     data["event_id"] = event_id
     data["institution_id"] = event.get("institution_id", "")
 
-    from services.email_template_service import upsert_template
+    from .services.email_template_service import upsert_template
     result = await upsert_template(data)
     await log_admin_action("admin@institution.com", "EMAIL_TEMPLATE_UPSERT",
                            f"Updated email template {data.get('type')} for event {event_id}")
@@ -7650,7 +7650,7 @@ async def delete_email_template(
 ):
     """Delete an email template."""
     await assert_institution_owns_event(event_id, user)
-    from services.email_template_service import delete_template
+    from .services.email_template_service import delete_template
     deleted = await delete_template(template_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Template not found")
@@ -7670,7 +7670,7 @@ async def get_active_email_template(
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
     institution_id = event.get("institution_id", "")
-    from services.email_template_service import get_active_template
+    from .services.email_template_service import get_active_template
     template = await get_active_template(event_id, institution_id, template_type)
     if not template:
         raise HTTPException(status_code=404, detail="No active template found for this type")
@@ -7722,7 +7722,7 @@ async def reset_email_templates_to_default(
     from db import email_templates_col
     await email_templates_col.delete_many({"event_id": event_id})
 
-    from services.email_template_service import seed_default_templates
+    from .services.email_template_service import seed_default_templates
     await seed_default_templates(event_id, event.get("institution_id", ""))
 
     await log_admin_action("admin@institution.com", "EMAIL_TEMPLATES_RESET",
@@ -7828,7 +7828,7 @@ async def notify_team_manually(
     Admin endpoint: Manually trigger a notification email to all members of a team.
     """
     from db import teams_col, events_col, users_col, hackathon_submissions_col
-    from services.email_service import send_notification_email
+    from .services.email_service import send_notification_email
     
     team_doc = await teams_col.find_one({"_id": ObjectId(team_id)})
     event_doc = await events_col.find_one({"_id": ObjectId(event_id)})
@@ -7872,7 +7872,7 @@ async def notify_teams_by_status(
 ):
     """Bulk email teams filtered by status (e.g. approved / shortlisted)."""
     from auth_institution import assert_institution_owns_event
-    from services.email_queue_service import enqueue_email
+    from .services.email_queue_service import enqueue_email
 
     event = await assert_institution_owns_event(event_id, user)
     resolved = str(event.get("_id") or event_id)

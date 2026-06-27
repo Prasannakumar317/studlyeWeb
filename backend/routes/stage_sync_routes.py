@@ -2,7 +2,7 @@
 Stage Synchronization Routes - Sync stages between events and opportunities
 """
 from fastapi import APIRouter, HTTPException
-from services.stage_sync_service import sync_stages_to_opportunities, sync_opportunity_to_event
+from ..services.stage_sync_service import sync_stages_to_opportunities, sync_opportunity_to_event
 
 router = APIRouter(prefix="/api/stage-sync", tags=["Stage Sync"])
 

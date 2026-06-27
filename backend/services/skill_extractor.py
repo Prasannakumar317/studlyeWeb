@@ -1,6 +1,6 @@
 import re
 from typing import Dict, List, Tuple, Any
-from services.career_taxonomy import (
+from .career_taxonomy import (
     ACTIVITY_SKILL_MAP,
     SUBJECT_SKILL_BASELINE,
     SKILL_DISPLAY_NAMES,
