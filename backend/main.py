@@ -106,7 +106,9 @@ additional_origins = [origin.strip() for origin in os.getenv("ADDITIONAL_CORS_OR
 
 origins = list(set([
     frontend_url,
-    backend_url
+    backend_url,
+    "https://studlyewebfinal.vercel.app",
+    "https://studlyeweb3.vercel.app"
 ] + additional_origins))
 
 # Add localhost origins for development
