@@ -3,7 +3,7 @@
   "private": true,
   "scripts": {
     "install:frontend": "npm install --prefix frontend",
-    "build": "npm exec --prefix frontend vite build"
+    "build": "npm --prefix frontend run build"
   },
   "dependencies": {
     "sharp": "^0.34.5"

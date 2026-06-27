@@ -3,8 +3,8 @@
 const viteEnv = import.meta.env as Record<string, string | undefined>;
 
 function resolveDefaultApiBaseUrl(): string {
-    // Return empty string for local dev so requests like /api/... use the Vite proxy
-    return ''; 
+    // Use VITE_API_BASE_URL if defined, otherwise fallback to RENDER_EXTERNAL_URL for production, else empty for dev proxy
+    return viteEnv.VITE_API_BASE_URL || viteEnv.RENDER_EXTERNAL_URL || '';
 }
 
 let resolvedUrl = viteEnv.VITE_API_BASE_URL ??
@@ -12,6 +12,10 @@ let resolvedUrl = viteEnv.VITE_API_BASE_URL ??
     viteEnv.RENDER_EXTERNAL_URL ??
     viteEnv.API_BASE_URL ??
     resolveDefaultApiBaseUrl();
+// Fallback to current origin if no explicit API base URL is set (e.g., in production on Vercel)
+if (!resolvedUrl) {
+    resolvedUrl = window.location.origin;
+}
 
 if (import.meta.env.DEV || (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'))) {
     resolvedUrl = resolveDefaultApiBaseUrl();
