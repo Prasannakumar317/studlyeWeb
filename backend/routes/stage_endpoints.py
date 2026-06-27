@@ -4,8 +4,8 @@ Stage Configuration & Registration Management Endpoints
 
 from fastapi import APIRouter, HTTPException, Body, Depends, Query
 from bson import ObjectId
-from db import events_col, submissions_col, users_col, participants_col
-from auth_institution import get_auth_user, get_auth_user_optional
+from .db import events_col, submissions_col, users_col, participants_col
+from .auth_institution import get_auth_user, get_auth_user_optional
 from datetime import datetime
 import logging
 

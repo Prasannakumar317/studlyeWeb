@@ -5,7 +5,7 @@ Implements Unstop-like team formation with request/approval workflow
 
 import os
 
-from db import (
+from ..db import (
     teams_col, participants_col, users_col, events_col,
     notifications_col
 )

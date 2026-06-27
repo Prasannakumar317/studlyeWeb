@@ -2,7 +2,7 @@ import asyncio
 from datetime import datetime
 import logging
 
-from db import events_col, opportunities_col
+from .db import events_col, opportunities_col
 from bson import ObjectId
 
 logging.basicConfig(level=logging.INFO)

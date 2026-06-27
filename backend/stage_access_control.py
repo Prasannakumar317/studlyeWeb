@@ -5,7 +5,7 @@ Also enforces time-based stage deadlines (e.g., registration 18:00-19:00)
 """
 
 from fastapi import HTTPException
-from db import participants_col, opportunities_col, events_col, teams_col, submission_data_col
+from .db import participants_col, opportunities_col, events_col, teams_col, submission_data_col
 from datetime import datetime, timezone
 from bson import ObjectId
 from services.stage_service import get_event_stages

@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 from bson import ObjectId
-from db import scores_col, submissions_col, submission_data_col, leaderboard_col, events_col
+from ..db import scores_col, submissions_col, submission_data_col, leaderboard_col, events_col
 
 class LeaderboardService:
     async def calculate_event_leaderboard(self, event_id: str, stage_id: Optional[str] = None, max_entries: int = 5000):

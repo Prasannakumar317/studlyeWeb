@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from dotenv import load_dotenv
 load_dotenv()
 
-from db import scores_col, submission_data_col
+from .db import scores_col, submission_data_col
 
 async def main():
     pipeline = [

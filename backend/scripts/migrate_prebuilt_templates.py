@@ -1,7 +1,7 @@
 import asyncio
 import json
 import os
-from db import db
+from .db import db
 from datetime import datetime
 
 async def run_migration():

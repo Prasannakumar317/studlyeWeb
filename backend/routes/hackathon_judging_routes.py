@@ -3,7 +3,7 @@ from typing import List, Optional
 from bson import ObjectId
 from datetime import datetime
 import secrets
-from db import (
+from .db import (
     rubrics_col, 
     submissions_col, 
     submission_scores_col, 
@@ -16,7 +16,7 @@ from db import (
     certificates_col,
     judges_col
 )
-from auth_institution import get_auth_user
+from .auth_institution import get_auth_user
 
 router = APIRouter(prefix="/api/judging", tags=["Hackathon Judging"])
 

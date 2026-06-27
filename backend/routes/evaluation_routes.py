@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Body, Depends
 from typing import Optional, Tuple, Any, Dict
 from bson import ObjectId
 from datetime import datetime, timezone
-from auth_institution import get_auth_user_optional
+from .auth_institution import get_auth_user_optional
 
 router = APIRouter(prefix="/api/evaluation", tags=["Evaluation"])
 

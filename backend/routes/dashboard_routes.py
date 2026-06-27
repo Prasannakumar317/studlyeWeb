@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Query, Depends
-from auth_institution import get_auth_user, assert_institution_scope
+from .auth_institution import get_auth_user, assert_institution_scope
 from services.dashboard_service import get_institution_stats
 from utils.cache import cache_response
 

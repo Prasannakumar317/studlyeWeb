@@ -7,8 +7,8 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from bson import ObjectId
 
-from auth_institution import get_auth_user, assert_institution_scope
-from db import (
+from .auth_institution import get_auth_user, assert_institution_scope
+from .db import (
     hackathon_problems_col,
     hackathon_selections_col,
     hackathon_event_config_col,

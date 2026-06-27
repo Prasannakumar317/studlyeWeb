@@ -3,7 +3,7 @@ Routes for Dynamic Stage Navigation & Submission - Unstop-like Flow
 """
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
-from auth_institution import get_auth_user, assert_institution_owns_event
+from .auth_institution import get_auth_user, assert_institution_owns_event
 from services.stage_service import (
     get_event_stages,
     get_participant_stage_progress,

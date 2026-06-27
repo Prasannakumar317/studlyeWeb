@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from db import db
+from ..db import db
 from models.certificate_batch_models import BatchStatus
 from models.certificate_record_models import CertificateRecord, CertificateStatus
 from services.certificate_generation_service_utils import (

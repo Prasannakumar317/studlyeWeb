@@ -1,4 +1,4 @@
-from db import scores_col, submissions_col
+from ..db import scores_col, submissions_col
 from bson import ObjectId
 from datetime import datetime, timezone
 

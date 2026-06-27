@@ -1,4 +1,4 @@
-from db import db, events_col, participants_col, opportunities_col, opportunity_applications_col
+from ..db import db, events_col, participants_col, opportunities_col, opportunity_applications_col
 from datetime import datetime
 
 async def get_institution_stats(institution_id: str):

@@ -11,8 +11,8 @@ import io
 import logging
 from fastapi import APIRouter, HTTPException, Depends, Body, File, UploadFile, status, Query
 from fastapi.responses import StreamingResponse
-from auth_institution import get_auth_user
-from db import db, user_profiles_col, registrations_col, events_col, participants_col, users_col, opportunities_col, announcements_col, announcement_audit_col
+from .auth_institution import get_auth_user
+from .db import db, user_profiles_col, registrations_col, events_col, participants_col, users_col, opportunities_col, announcements_col, announcement_audit_col
 from bson import ObjectId
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List

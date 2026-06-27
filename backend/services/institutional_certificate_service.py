@@ -12,7 +12,7 @@ except Exception:
     HAS_WEASYPRINT = False
 from datetime import datetime, timezone
 from bson import ObjectId
-from db import event_certificates_col, cert_templates_col, certificate_jobs_col
+from ..db import event_certificates_col, cert_templates_col, certificate_jobs_col
 from services.email_template_service import get_active_template, render_template
 
 

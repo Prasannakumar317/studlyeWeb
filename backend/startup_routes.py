@@ -6,7 +6,7 @@ import httpx
 import json
 import re
 from typing import List, Dict, Any, Optional
-from db import db
+from .db import db
 from routes.auth import get_current_user
 
 router = APIRouter(prefix="/api/v1/startup", tags=["startup"])

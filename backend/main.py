@@ -15,13 +15,13 @@ import uuid
 import traceback
 from groq import Groq
 import requests
-from services.ai_tools_scraper import fetch_ai_tools
+from .services.ai_tools_scraper import fetch_ai_tools
 from jinja2 import Environment, FileSystemLoader, Template
 from fastapi.responses import HTMLResponse
 import json
 import time
 import asyncio
-from services.email_service import send_notification_email, get_registration_template, get_announcement_template
+from .services.email_service import send_notification_email, get_registration_template, get_announcement_template
 from datetime import datetime, timezone
 import secrets
  
@@ -61,17 +61,7 @@ if sentry_dsn:
     )
     print("Sentry initialized")
 
-from routes.skill_assessment_controller import router as skill_assessment_router
-app.include_router(skill_assessment_router)
 
-from routes.certificate_template_routes import router as certificate_template_router
-app.include_router(certificate_template_router)
-
-from startup_routes import router as startup_router
-app.include_router(startup_router)
-
-from routes.resource_routes import router as resource_router
-app.include_router(resource_router)
 
 # Touch file to trigger uvicorn reload when env changes during local dev
 # reload trigger
@@ -103,7 +93,7 @@ def _super_admin_email_set() -> set:
     return {x.strip().lower() for x in raw.split(",") if x.strip()}
 
 # Setup logging
-from notification_helpers import notify_institution
+from .notification_helpers import notify_institution
 import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("main_service")
@@ -365,7 +355,7 @@ async def debug_database():
 reset_tokens = {} # email: {token, expiry}
 
 # --- SECURITY DEPENDENCIES (RBAC) ---
-from routes.auth import get_current_user, require_role
+from .routes.auth import get_current_user, require_role
 
 # --- ADMIN SECURITY MIDDLEWARE ---
 async def admin_required(x_admin_email: str = Header(None)):
@@ -378,7 +368,7 @@ async def admin_required(x_admin_email: str = Header(None)):
             detail="Forbidden: invalid super-admin header (configure SUPER_ADMIN_EMAILS).",
         )
     return x_admin_email
-from db import (
+from .db import (
     db,
     courses_col,
     modules_col,
@@ -627,9 +617,9 @@ async def upload_temp_image(request: Request, file: UploadFile = File(...), publ
 
 from domain_models import Institution, Event, Participant, Team, Submission, Judge, Score, Notification, LeaderboardEntry, Certificate
 from services.email_service import send_notification_email, get_registration_template, get_email_verification_template
-from auth_utils import get_password_hash, verify_password, create_access_token, decode_access_token
+from .auth_utils import get_password_hash, verify_password, create_access_token, decode_access_token
 # from routes import upgrade_routes
-import integration_routes
+from . import integration_routes
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -826,16 +816,16 @@ def fix_progress(prog, default_status="locked"):
     # Merge defaults with actual data
     return {**defaults, **fix_id(prog)}
 
-from routes import submission_routes, judge_routes, event_routes, dashboard_routes, opportunity_routes, team_routes, hackathon_judging_routes, stage_endpoints
-from routes import auth
-from routes import evaluation_criteria_routes, quiz_visibility_routes, notification_routes, evaluation_routes, team_formation_routes, stage_sync_routes, direct_sync_routes, hackathon_submission_routes
-from routes import stage_navigation_routes, team_join_request_routes, hackathon_public_routes
-from routes import student_features_routes
-from routes import event_certificate_routes, registration_flow_routes
-from routes import achievement_registry_routes
+from .routes import submission_routes, judge_routes, event_routes, dashboard_routes, opportunity_routes, team_routes, hackathon_judging_routes, stage_endpoints
+from .routes import auth
+from .routes import evaluation_criteria_routes, quiz_visibility_routes, notification_routes, evaluation_routes, team_formation_routes, stage_sync_routes, direct_sync_routes, hackathon_submission_routes
+from .routes import stage_navigation_routes, team_join_request_routes, hackathon_public_routes
+from .routes import student_features_routes
+from .routes import event_certificate_routes, registration_flow_routes
+from .routes import achievement_registry_routes
 
-import hackathon_integration_routes
-import participant_card_routes
+from . import hackathon_integration_routes
+from . import participant_card_routes
 from rate_limiter import rate_limit, check_rate_limit
 
 
@@ -960,7 +950,7 @@ async def global_exception_handler(request: Request, exc: Exception):
     return response
 
 # ─── Ads / Advertisements API ────────────────────────────────────────────────
-from db import ads_col
+from .db import ads_col
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 from bson import ObjectId
@@ -5329,7 +5319,7 @@ async def admin_list_join_requests(status: Optional[str] = "pending"):
 # ──────────────────────────────────────────────────────────────────────────
 
 from motor.motor_asyncio import AsyncIOMotorCollection
-from db import db
+from .db import db
 
 cert_templates_col: AsyncIOMotorCollection = db["cert_templates"]
 

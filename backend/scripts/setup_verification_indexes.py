@@ -1,4 +1,4 @@
-from db import db
+from .db import db
 
 async def setup_verification_indexes():
     """Define indexes for the VerificationAudit collection."""

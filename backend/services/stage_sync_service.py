@@ -2,7 +2,7 @@
 Stage Synchronization Service - Sync stages between events and opportunities
 """
 from datetime import datetime, timezone
-from db import events_col, opportunities_col
+from ..db import events_col, opportunities_col
 
 async def sync_stages_to_opportunities(event_id: str):
     """Sync stages from event to all related opportunities"""

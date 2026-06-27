@@ -1,7 +1,7 @@
 import logging
 from typing import List, Dict, Any, Set
 from bson import ObjectId
-from db import db
+from ..db import db
 from models.eligibility_models import EligibilityRule, EligibilityResult, RuleType, RuleCategory
 
 logger = logging.getLogger("eligibility_engine")

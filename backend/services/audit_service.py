@@ -1,5 +1,5 @@
 from datetime import datetime
-from db import audit_logs_col
+from ..db import audit_logs_col
 
 async def log_admin_action(admin_email: str, action: str, details: str = ""):
     """

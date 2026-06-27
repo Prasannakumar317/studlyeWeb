@@ -5,7 +5,7 @@ import qrcode
 import qrcode.image.svg
 import os
 from io import BytesIO
-from db import db
+from ..db import db
 from datetime import datetime
 from weasyprint import HTML
 

@@ -3,7 +3,7 @@ Registration Service - Auto-fill user profile data and merge with event-specific
 Implements Unstop-like registration with pre-filled profile data
 """
 
-from db import db, users_col, participants_col, events_col, submission_data_col
+from ..db import db, users_col, participants_col, events_col, submission_data_col
 from bson import ObjectId
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List

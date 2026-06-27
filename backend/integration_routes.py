@@ -8,7 +8,7 @@ import json
 import logging
 from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Request, Form, File, UploadFile, Body, Depends, Query, Response, BackgroundTasks
-from auth_institution import get_auth_user, get_auth_user_optional, assert_institution_scope, assert_institution_owns_event
+from .auth_institution import get_auth_user, get_auth_user_optional, assert_institution_scope, assert_institution_owns_event
 
 # Simple In-Memory Cache
 _cache = {}
@@ -23,7 +23,7 @@ def get_cache(key: str):
 
 def set_cache(key: str, data: any):
     _cache[key] = (data, datetime.now())
-from routes.auth import get_current_user, require_role
+from .routes.auth import get_current_user, require_role
 from services.email_service import (
     send_notification_email,
     get_certificate_template,
@@ -39,10 +39,10 @@ from services.email_service import (
 from services.institutional_analytics_service import analytics_service
 from services.institutional_certificate_service import certificate_service
 from services.leaderboard_service import leaderboard_service
-from db import db, leaderboard_col, events_col, participants_col, certificates_col, notifications_col, institutions_col, users_col, teams_col, submissions_col, submission_data_col, scores_col, results_col, audit_logs_col, opportunities_col, opportunity_applications_col, hackathon_submissions_col, event_certificates_col, avatars_col
+from .db import db, leaderboard_col, events_col, participants_col, certificates_col, notifications_col, institutions_col, users_col, teams_col, submissions_col, submission_data_col, scores_col, results_col, audit_logs_col, opportunities_col, opportunity_applications_col, hackathon_submissions_col, event_certificates_col, avatars_col
 from bson import ObjectId
 from services.audit_service import log_admin_action
-from notification_helpers import notify_institution
+from .notification_helpers import notify_institution
 
 from services.subscription_service import validate_new_listing_against_plan
 import logging

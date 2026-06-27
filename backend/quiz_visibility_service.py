@@ -5,7 +5,7 @@ Handles quiz visibility based on stage visibility (Public/Private/Shortlisted On
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 from bson import ObjectId
-from db import events_col, participants_col, quizzes_col, rounds_col, users_col
+from .db import events_col, participants_col, quizzes_col, rounds_col, users_col
 
 class QuizVisibilityService:
     """Service for managing quiz visibility based on stage configuration"""

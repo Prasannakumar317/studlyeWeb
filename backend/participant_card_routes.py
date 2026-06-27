@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Query, Body
 from bson import ObjectId
 
-from db import participants_col, users_col, events_col, teams_col, institutions_col
+from .db import participants_col, users_col, events_col, teams_col, institutions_col
 
 logger = logging.getLogger(__name__)
 

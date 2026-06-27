@@ -3,7 +3,7 @@ Direct Sync Routes - Simple, direct stage synchronization
 """
 from fastapi import APIRouter
 from datetime import datetime
-from db import events_col, opportunities_col
+from .db import events_col, opportunities_col
 
 router = APIRouter(prefix="/api/direct-sync", tags=["Direct Sync"])
 

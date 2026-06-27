@@ -4,7 +4,7 @@ Badges, leaderboards, achievements, and performance tracking
 """
 from datetime import datetime, timezone
 from typing import Dict, List, Any, Optional
-from db import (
+from ..db import (
     users_col, achievements_col, badges_col, 
     leaderboard_col, participants_col, submissions_col
 )

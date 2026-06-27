@@ -6,7 +6,7 @@ import os
 # Ensure backend directory is in path for imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from db import registrations_col
+from .db import registrations_col
 
 async def fix_notified_status(event_id, emails_to_fix):
     now = datetime.now(timezone.utc)

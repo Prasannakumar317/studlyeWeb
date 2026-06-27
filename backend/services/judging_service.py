@@ -4,7 +4,7 @@ Plagiarism detection, score moderation, blind review, and evaluation workflows
 """
 from datetime import datetime, timezone
 from typing import Dict, List, Any, Optional
-from db import submissions_col, scores_col, judges_col, events_col, audit_logs_col
+from ..db import submissions_col, scores_col, judges_col, events_col, audit_logs_col
 from bson import ObjectId
 import asyncio
 import hashlib

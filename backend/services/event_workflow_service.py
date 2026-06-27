@@ -1,5 +1,5 @@
 from bson import ObjectId
-from db import participants_col, events_col
+from ..db import participants_col, events_col
 
 class EventWorkflowService:
     """

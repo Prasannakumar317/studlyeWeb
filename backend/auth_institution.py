@@ -5,9 +5,9 @@ from typing import Optional
 import logging
 
 from fastapi import Depends, Header, HTTPException, Query
-from auth_utils import decode_access_token
+from .auth_utils import decode_access_token
 from bson import ObjectId
-from db import users_col, events_col, opportunities_col
+from .db import users_col, events_col, opportunities_col
 
 logger = logging.getLogger("auth_institution")
 

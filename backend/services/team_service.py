@@ -9,7 +9,7 @@ from typing import Optional
 
 from bson import ObjectId
 
-from db import teams_col, participants_col, users_col, events_col
+from ..db import teams_col, participants_col, users_col, events_col
 
 async def create_team(
     event_id: str,

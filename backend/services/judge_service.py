@@ -1,4 +1,4 @@
-from db import judges_col
+from ..db import judges_col
 from bson import ObjectId
 from datetime import datetime, timezone
 import secrets

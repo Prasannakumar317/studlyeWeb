@@ -3,7 +3,7 @@ Stage Management Service - Dynamic Stage Rendering & Progression
 Handles: Registration, Team Formation, Submissions, Final stages with dynamic fields
 """
 
-from db import db, events_col, participants_col, teams_col, submission_data_col, users_col
+from ..db import db, events_col, participants_col, teams_col, submission_data_col, users_col
 from bson import ObjectId
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Dict, Any

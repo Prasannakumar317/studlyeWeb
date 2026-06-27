@@ -1,5 +1,5 @@
 from fastapi import Depends, HTTPException, Request
-from auth_utils import decode_access_token
+from ..auth_utils import decode_access_token
 from typing import List
 
 def get_current_user(request: Request):

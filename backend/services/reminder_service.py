@@ -1,4 +1,4 @@
-from db import events_col, judges_col, submissions_col, notifications_col, audit_logs_col, participants_col
+from ..db import events_col, judges_col, submissions_col, notifications_col, audit_logs_col, participants_col
 from bson import ObjectId
 from services.email_service import send_notification_email
 import asyncio
@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 logger = logging.getLogger("reminder_service")
 
 # Dedup collection for participant reminders
-from db import db as _db
+from ..db import db as _db
 reminder_logs_col = _db["reminder_logs"]
 
 class ReminderService:

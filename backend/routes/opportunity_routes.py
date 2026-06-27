@@ -5,7 +5,7 @@ from datetime import datetime
 import asyncio
 import os
 
-from auth_institution import get_auth_user, get_auth_user_optional
+from .auth_institution import get_auth_user, get_auth_user_optional
 from services.opportunity_service import (
     create_opportunity,
     get_all_opportunities,
@@ -15,8 +15,8 @@ from services.opportunity_service import (
     get_learner_opportunity_overview,
 )
 from services.subscription_service import validate_new_listing_against_plan
-from db import notifications_col
-from db import quizzes_col, events_col, participants_col, opportunities_col, opportunity_applications_col, opportunity_reviews_col
+from .db import notifications_col
+from .db import quizzes_col, events_col, participants_col, opportunities_col, opportunity_applications_col, opportunity_reviews_col
 from services.email_service import send_notification_email
 
 router = APIRouter(prefix="/api/opportunities", tags=["Opportunities"])

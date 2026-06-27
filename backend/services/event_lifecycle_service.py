@@ -5,7 +5,7 @@ Manages event states, deadlines, auto-transitions, and lifecycle notifications
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Any, Optional
 from enum import Enum
-from db import events_col, participants_col, submissions_col, notifications_col, audit_logs_col
+from ..db import events_col, participants_col, submissions_col, notifications_col, audit_logs_col
 from bson import ObjectId
 import asyncio
 

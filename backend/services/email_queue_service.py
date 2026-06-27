@@ -2,7 +2,7 @@ import asyncio
 import logging
 from datetime import datetime
 
-from db import email_delivery_logs_col, email_queue_col
+from ..db import email_delivery_logs_col, email_queue_col
 from pymongo import ReturnDocument
 from services.email_service import send_notification_email
 from services.circuit_breaker import get_circuit_breaker

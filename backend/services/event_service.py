@@ -1,4 +1,4 @@
-from db import events_col
+from ..db import events_col
 from domain_models import Event
 from bson import ObjectId
 from datetime import datetime

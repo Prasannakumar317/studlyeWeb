@@ -6,7 +6,7 @@ import asyncio
 from datetime import datetime, timezone
 from typing import Dict, List, Any, Optional
 from enum import Enum
-from db import (
+from ..db import (
     participants_col, notifications_col, events_col,
     users_col, institutions_col, messages_col
 )

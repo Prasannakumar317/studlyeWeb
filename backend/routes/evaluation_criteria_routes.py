@@ -4,7 +4,7 @@ Handles CRUD operations for evaluation criteria
 """
 from fastapi import APIRouter, HTTPException, Body, Depends
 from typing import List, Dict, Any
-from auth_institution import get_auth_user, assert_institution_scope, assert_institution_owns_event
+from .auth_institution import get_auth_user, assert_institution_scope, assert_institution_owns_event
 from evaluation_criteria_service import evaluation_criteria_service
 
 router = APIRouter(prefix="/api/evaluation-criteria", tags=["Evaluation Criteria"])

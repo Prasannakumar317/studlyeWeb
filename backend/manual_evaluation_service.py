@@ -9,9 +9,9 @@ from dotenv import load_dotenv
 
 load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
 from bson import ObjectId
-from db import submissions_col, scores_col, judges_col, events_col, users_col, notifications_col
+from .db import submissions_col, scores_col, judges_col, events_col, users_col, notifications_col
 from services.email_service import send_notification_email
-from notification_helpers import notify_institution
+from .notification_helpers import notify_institution
 
 class ManualEvaluationService:
     """Service for manual evaluation of coding submissions"""

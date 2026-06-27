@@ -1,8 +1,8 @@
 from fastapi import APIRouter, HTTPException, Depends
 from bson import ObjectId
 from datetime import datetime
-from db import events_col, users_col, participants_col, event_certificates_col
-from auth_institution import get_auth_user, get_auth_user_optional
+from .db import events_col, users_col, participants_col, event_certificates_col
+from .auth_institution import get_auth_user, get_auth_user_optional
 from services.institutional_certificate_service import certificate_service, ACHIEVEMENT_TYPES, VALID_ACHIEVEMENTS
 from services.email_service import send_notification_email
 from services.email_template_service import get_active_template, render_template

@@ -2,7 +2,7 @@ import asyncio
 from bson import ObjectId
 from datetime import datetime
 
-from db import db, participants_col, events_col, users_col, notifications_col
+from .db import db, participants_col, events_col, users_col, notifications_col
 from services.event_workflow_service import workflow_service
 
 EVENT_ID = '6a1923bdbcdebc6f5fff4fbb'

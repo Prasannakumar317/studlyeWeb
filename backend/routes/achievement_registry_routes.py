@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, Query, Body
-from db import db, certificates_col, events_col, participants_col, submission_data_col, scores_col, users_col, teams_col, cert_templates_col, event_certificates_col
-from auth_institution import get_auth_user
+from .db import db, certificates_col, events_col, participants_col, submission_data_col, scores_col, users_col, teams_col, cert_templates_col, event_certificates_col
+from .auth_institution import get_auth_user
 from bson import ObjectId
 from typing import Optional, List
 from datetime import datetime

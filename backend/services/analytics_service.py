@@ -5,7 +5,7 @@ Provides comprehensive KPI calculations, engagement metrics, and conversion funn
 import asyncio
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Any, Optional
-from db import (
+from ..db import (
     events_col, participants_col, submissions_col, 
     judges_col, certificates_col, users_col, notifications_col,
     leaderboard_col, audit_logs_col

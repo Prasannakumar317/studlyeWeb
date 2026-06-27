@@ -5,7 +5,7 @@ Handles in-app notifications, email notifications, and notification bell functio
 from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Any, Optional
 from bson import ObjectId
-from db import notifications_col, users_col, institutions_col
+from .db import notifications_col, users_col, institutions_col
 from services.email_service import send_notification_email
 import os
 

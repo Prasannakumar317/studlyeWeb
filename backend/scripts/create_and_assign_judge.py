@@ -2,7 +2,7 @@ import asyncio
 from bson import ObjectId
 from datetime import datetime
 
-from db import db, submission_data_col
+from .db import db, submission_data_col
 from services.judge_service import create_judge, assign_judge_to_multiple_submissions
 
 EVENT_ID = "6a1923bdbcdebc6f5fff4fbb"

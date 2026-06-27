@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Dict, Optional
 
-from db import hackathon_event_config_col, notifications_col, opportunities_col
+from ..db import hackathon_event_config_col, notifications_col, opportunities_col
 
 
 SUBSCRIPTION_STATUSES = Enum("SubscriptionStatus", ["PENDING", "ACTIVE", "CANCELLED", "EXPIRED", "FAILED"])

@@ -1,4 +1,4 @@
-from db import db
+from .db import db
 
 async def setup_certificate_indexes():
     """Define indexes for the CertificateTemplate collection."""

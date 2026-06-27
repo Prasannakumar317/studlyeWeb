@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Request, Depends
-from db import db
+from .db import db
 from models.verification_models import VerificationAudit
 from models.certificate_record_models import CertificateStatus
 from datetime import datetime
@@ -11,7 +11,7 @@ router = APIRouter(prefix="/api/v1/certificates/verify", tags=["Public Verificat
 from fastapi import APIRouter, HTTPException, Request, Depends, status
 from slowapi import Limiter
 from slowapi.util import get_remote_address
-from db import db
+from .db import db
 from models.verification_models import VerificationAudit
 from models.certificate_record_models import CertificateStatus
 from datetime import datetime

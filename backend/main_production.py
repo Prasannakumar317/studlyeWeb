@@ -30,7 +30,7 @@ import sys
 sys.path.insert(0, os.path.dirname(__file__))
 
 # Import database
-from db import db, ensure_indexes
+from .db import db, ensure_indexes
 
 # Setup logging FIRST (no data leaks)
 logging.basicConfig(

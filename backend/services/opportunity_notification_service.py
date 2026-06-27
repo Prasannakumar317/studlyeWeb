@@ -9,7 +9,7 @@ Handles email notifications for opportunities:
 import asyncio
 import os
 from datetime import datetime, timedelta
-from db import db, users_col, opportunities_col, events_col, participants_col
+from ..db import db, users_col, opportunities_col, events_col, participants_col
 from services.email_service import send_notification_email
 from services.email_template_service import get_active_template, render_template
 from bson import ObjectId

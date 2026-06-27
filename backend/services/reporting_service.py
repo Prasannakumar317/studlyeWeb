@@ -5,7 +5,7 @@ Custom reports, scheduled exports, and multi-format output
 from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Any, Optional
 from enum import Enum
-from db import (
+from ..db import (
     events_col, submissions_col, participants_col,
     leaderboard_col, audit_logs_col, reports_col
 )

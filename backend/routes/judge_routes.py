@@ -1,6 +1,6 @@
 from bson import ObjectId
 from fastapi import APIRouter, HTTPException, Body, Query, Depends
-from auth_institution import get_auth_user
+from .auth_institution import get_auth_user
 from services.judge_service import (
     create_judge,
     get_all_judges,

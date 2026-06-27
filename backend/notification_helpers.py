@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from db import notifications_col
+from .db import notifications_col
 
 
 async def notify_institution(

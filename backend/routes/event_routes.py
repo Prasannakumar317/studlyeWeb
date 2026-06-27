@@ -8,12 +8,12 @@ from services.event_service import (
     update_event_status
 )
 from typing import List, Optional
-from auth_institution import get_auth_user, get_auth_user_optional, assert_institution_owns_event
+from .auth_institution import get_auth_user, get_auth_user_optional, assert_institution_owns_event
 from bson import ObjectId
 import os
 import uuid
 import asyncio
-from db import events_col
+from .db import events_col
 from datetime import datetime
 
 router = APIRouter(prefix="/api/v1/events", tags=["Events"])

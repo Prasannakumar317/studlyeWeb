@@ -6,7 +6,7 @@ import smtplib
 from email.message import EmailMessage
 from datetime import datetime
 
-from db import db, email_queue_col, email_delivery_logs_col, event_certificates_col, participants_col
+from .db import db, email_queue_col, email_delivery_logs_col, event_certificates_col, participants_col
 
 
 def send_via_smtp(recipient, subject, body, smtp_conf):

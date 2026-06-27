@@ -8,8 +8,8 @@ from fastapi.responses import StreamingResponse
 import io, csv
 from bson import ObjectId
 
-from auth_institution import get_auth_user
-from db import teams_col, participants_col, events_col, users_col, notifications_col, team_invite_acceptances_col
+from .auth_institution import get_auth_user
+from .db import teams_col, participants_col, events_col, users_col, notifications_col, team_invite_acceptances_col
 from bson.son import SON
 from datetime import timezone
 from services.email_service import send_notification_email, get_team_invite_template, get_team_join_template

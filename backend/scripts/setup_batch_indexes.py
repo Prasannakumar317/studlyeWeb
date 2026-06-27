@@ -1,4 +1,4 @@
-from db import db
+from .db import db
 
 async def setup_batch_indexes():
     """Define indexes for the CertificateBatch collection."""

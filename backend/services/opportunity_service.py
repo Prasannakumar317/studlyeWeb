@@ -1,6 +1,6 @@
 import asyncio
 
-from db import db, events_col, users_col, notifications_col, institutions_col
+from ..db import db, events_col, users_col, notifications_col, institutions_col
 from domain_models import Opportunity, OpportunityApplication
 from bson import ObjectId
 from datetime import datetime, timedelta, timezone

@@ -1,5 +1,5 @@
 import asyncio
-from db import db, event_certificates_col, certificate_jobs_col, email_delivery_logs_col, email_queue_col
+from .db import db, event_certificates_col, certificate_jobs_col, email_delivery_logs_col, email_queue_col
 
 async def main():
     await db.connect()

@@ -1,5 +1,5 @@
 
-from db import events_col, participants_col, teams_col, submissions_col, leaderboard_col
+from ..db import events_col, participants_col, teams_col, submissions_col, leaderboard_col
 from bson import ObjectId
 from datetime import datetime, timedelta
 

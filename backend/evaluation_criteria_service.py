@@ -5,8 +5,8 @@ Handles creation, updating, and management of evaluation criteria for events
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
 from bson import ObjectId
-from db import events_col, institutions_col, users_col, notifications_col
-from notification_helpers import notify_institution
+from .db import events_col, institutions_col, users_col, notifications_col
+from .notification_helpers import notify_institution
 
 class EvaluationCriteriaService:
     """Service for managing evaluation criteria"""

@@ -2,7 +2,7 @@
 Dynamic Submission Service - Handle stage submissions with admin-defined fields
 """
 
-from db import submission_data_col, participants_col, events_col, users_col, teams_col, opportunities_col, opportunity_applications_col
+from ..db import submission_data_col, participants_col, events_col, users_col, teams_col, opportunities_col, opportunity_applications_col
 from notification_service import notification_service
 from bson import ObjectId
 from datetime import datetime, timezone
