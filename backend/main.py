@@ -129,7 +129,7 @@ if os.getenv("ENVIRONMENT", "development").lower() == "development":
         "http://localhost:8000"
     ])
 
-origins = [origin for origin in origins if origin]
+origins = [origin.rstrip('/') for origin in origins if origin]
 
 # Remove duplicates
 origins = list(set(origins))
