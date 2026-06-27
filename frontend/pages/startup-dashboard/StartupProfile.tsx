@@ -564,6 +564,15 @@ const StartupProfile: React.FC<{ institutionId: string; onProfileUpdate?: () => 
       );
   }
 
+  const TAB_THEMES: Record<string, { text: string, bg: string, ring: string, border: string, accent: string }> = {
+      showcase: { text: "text-pink-600", bg: "bg-pink-50/50", ring: "border-pink-200", border: "border-t-4 border-t-pink-500", accent: "bg-pink-500" },
+      opportunities: { text: "text-indigo-650", bg: "bg-indigo-50/50", ring: "border-indigo-200", border: "border-t-4 border-t-indigo-500", accent: "bg-indigo-500" },
+      applicants: { text: "text-emerald-600", bg: "bg-emerald-50/50", ring: "border-emerald-200", border: "border-t-4 border-t-emerald-500", accent: "bg-emerald-500" },
+      stats: { text: "text-amber-600", bg: "bg-amber-50/50", ring: "border-amber-200", border: "border-t-4 border-t-amber-500", accent: "bg-amber-500" }
+  };
+
+  const getActiveTheme = () => TAB_THEMES[activeWorkspaceTab] || TAB_THEMES.showcase;
+
   return (
     <motion.div 
         initial={{ opacity: 0, y: 15 }}
@@ -572,14 +581,14 @@ const StartupProfile: React.FC<{ institutionId: string; onProfileUpdate?: () => 
         className="space-y-8 font-sans pb-16 max-w-6xl mx-auto text-left relative"
     >
         {/* Header Cover Banner */}
-        <div className="relative rounded-[2.5rem] overflow-hidden bg-white border border-slate-100 shadow-2xl shadow-slate-100/30">
+        <div className="relative rounded-[2.5rem] overflow-hidden bg-white border border-slate-200/80 shadow-lg">
             <div className="h-60 w-full overflow-hidden relative">
                 <img 
                     src={resolveUrl(profile.hero_image_url) || 'https://images.unsplash.com/photo-1557804506-669a67965ba0?w=1400'} 
                     alt="Cover Banner" 
                     className="w-full h-full object-cover brightness-[0.85]" 
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-slate-955/75 via-slate-900/30 to-transparent" />
+                <div className="absolute inset-0 bg-gradient-to-t from-slate-900/80 via-slate-900/40 to-transparent" />
             </div>
 
             {/* Profile Avatar & Primary Info Overlay */}
@@ -601,7 +610,7 @@ const StartupProfile: React.FC<{ institutionId: string; onProfileUpdate?: () => 
                         <span className="px-3 py-1 bg-pink-50 border border-pink-100 text-[#EC4899] text-[10px] font-black rounded-full uppercase tracking-wider shadow-sm">
                             {profile.stage}
                         </span>
-                        <span className="px-3 py-1 bg-slate-50 border border-slate-100 text-slate-500 text-[10px] font-black rounded-full uppercase tracking-wider shadow-sm">
+                        <span className="px-3 py-1 bg-slate-50 border border-slate-200/60 text-slate-500 text-[10px] font-black rounded-full uppercase tracking-wider shadow-sm">
                             {profile.industry || 'General Industry'}
                         </span>
                     </div>
@@ -666,7 +675,7 @@ const StartupProfile: React.FC<{ institutionId: string; onProfileUpdate?: () => 
         </AnimatePresence>
 
         {/* Sub-Navigation Tabs with animated slider indicator */}
-        <div className="flex border-b border-slate-100 gap-1 overflow-x-auto no-scrollbar">
+        <div className="flex border-b border-slate-200/80 gap-1 overflow-x-auto no-scrollbar">
             {[
                 { id: 'showcase', label: 'Company Showcase', icon: Rocket },
                 { id: 'opportunities', label: 'Hiring & Postings', icon: FileText },
@@ -674,12 +683,13 @@ const StartupProfile: React.FC<{ institutionId: string; onProfileUpdate?: () => 
                 { id: 'stats', label: 'Workspace Statistics', icon: TrendingUp }
             ].map(tab => {
                 const isActive = activeWorkspaceTab === tab.id;
+                const config = TAB_THEMES[tab.id] || TAB_THEMES.showcase;
                 return (
                     <button
                         key={tab.id}
                         onClick={() => setActiveWorkspaceTab(tab.id as any)}
-                        className={`px-5 py-3.5 border-none bg-transparent font-bold text-xs flex items-center gap-2.5 transition-all cursor-pointer relative ${
-                            isActive ? 'text-pink-600 font-black' : 'text-slate-400 hover:text-slate-600'
+                        className={`px-5 py-3.5 border-none bg-transparent font-black text-xs flex items-center gap-2.5 transition-all cursor-pointer relative ${
+                            isActive ? config.text : 'text-slate-400 hover:text-slate-650'
                         }`}
                     >
                         <tab.icon size={16} />
@@ -687,7 +697,7 @@ const StartupProfile: React.FC<{ institutionId: string; onProfileUpdate?: () => 
                         {isActive && (
                             <motion.div 
                                 layoutId="profileWorkspaceTabActiveIndicator"
-                                className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#EC4899] z-10"
+                                className={`absolute bottom-0 left-0 right-0 h-0.5 ${config.accent} z-10`}
                             />
                         )}
                     </button>
@@ -708,13 +718,14 @@ const StartupProfile: React.FC<{ institutionId: string; onProfileUpdate?: () => 
                         className="grid grid-cols-1 lg:grid-cols-3 gap-8"
                     >
                         <div className="lg:col-span-2 space-y-8">
-                            {/* Bento About details */}
-                            <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-2xl shadow-slate-100/20 text-left space-y-6">
+                            {/* Bento About details: Lavender-indigo accent border */}
+                            <div className="bg-white/80 backdrop-blur-xl p-8 rounded-[2.5rem] border border-indigo-100/60 border-t-4 border-t-indigo-500/80 shadow-[0_8px_30px_rgba(0,0,0,0.02)] text-left space-y-6 relative overflow-hidden group">
+                                <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-indigo-500/5 to-transparent blur-2xl pointer-events-none rounded-full" />
                                 <div>
                                     <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 mb-4">
-                                        <Building2 size={16} className="text-[#EC4899]" /> About {profile.company_name || 'Startup'}
+                                        <Building2 size={16} className="text-indigo-600" /> About {profile.company_name || 'Startup'}
                                     </h3>
-                                    <p className="text-slate-650 text-xs leading-relaxed font-semibold">
+                                    <p className="text-slate-600 text-xs leading-relaxed font-semibold">
                                         {profile.description || 'Provide details about your startup in the editor.'}
                                     </p>
                                 </div>
@@ -722,16 +733,16 @@ const StartupProfile: React.FC<{ institutionId: string; onProfileUpdate?: () => 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-6 border-t border-slate-100/60">
                                     <motion.div 
                                         whileHover={{ scale: 1.01 }}
-                                        className="space-y-2 p-4 bg-slate-50/50 border border-slate-100 rounded-2xl shadow-xs"
+                                        className="space-y-2 p-4 bg-rose-50/30 border border-rose-100/80 rounded-2xl shadow-xs"
                                     >
-                                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1"><Target size={12} className="text-[#EC4899]" /> The Problem</span>
-                                        <p className="text-slate-650 text-xs font-semibold leading-relaxed">{profile.problem_statement || 'N/A'}</p>
+                                        <span className="text-[9px] font-black text-rose-600 uppercase tracking-widest flex items-center gap-1"><Target size={12} className="text-rose-500" /> The Problem</span>
+                                        <p className="text-slate-655 text-xs font-semibold leading-relaxed">{profile.problem_statement || 'N/A'}</p>
                                     </motion.div>
                                     <motion.div 
                                         whileHover={{ scale: 1.01 }}
-                                        className="space-y-2 p-4 bg-slate-50/50 border border-slate-100 rounded-2xl shadow-xs"
+                                        className="space-y-2 p-4 bg-emerald-50/30 border border-emerald-100/80 rounded-2xl shadow-xs"
                                     >
-                                        <span className="text-[9px] font-black text-[#EC4899] uppercase tracking-widest flex items-center gap-1"><Sparkles size={12} className="text-[#EC4899]" /> The Solution</span>
+                                        <span className="text-[9px] font-black text-emerald-600 uppercase tracking-widest flex items-center gap-1"><Sparkles size={12} className="text-emerald-500" /> The Solution</span>
                                         <p className="text-slate-655 text-xs font-semibold leading-relaxed">{profile.solution || 'N/A'}</p>
                                     </motion.div>
                                 </div>
@@ -739,32 +750,33 @@ const StartupProfile: React.FC<{ institutionId: string; onProfileUpdate?: () => 
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-5 pt-6 border-t border-slate-100/60">
                                     <motion.div 
                                         whileHover={{ scale: 1.01 }}
-                                        className="space-y-2 p-4 bg-slate-50/30 border border-slate-100/80 rounded-2xl"
+                                        className="space-y-2 p-4 bg-indigo-50/20 border border-indigo-100/80 rounded-2xl"
                                     >
-                                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Our Mission</span>
+                                        <span className="text-[9px] font-black text-indigo-500 uppercase tracking-widest">Our Mission</span>
                                         <p className="text-slate-600 text-[11px] font-semibold leading-relaxed">{profile.mission || 'N/A'}</p>
                                     </motion.div>
                                     <motion.div 
                                         whileHover={{ scale: 1.01 }}
-                                        className="space-y-2 p-4 bg-slate-50/30 border border-slate-100/80 rounded-2xl"
+                                        className="space-y-2 p-4 bg-purple-50/20 border border-purple-100/80 rounded-2xl"
                                     >
-                                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Our Vision</span>
+                                        <span className="text-[9px] font-black text-purple-650 uppercase tracking-widest">Our Vision</span>
                                         <p className="text-slate-600 text-[11px] font-semibold leading-relaxed">{profile.vision || 'N/A'}</p>
                                     </motion.div>
                                     <motion.div 
                                         whileHover={{ scale: 1.01 }}
-                                        className="space-y-2 p-4 bg-slate-50/30 border border-slate-100/80 rounded-2xl"
+                                        className="space-y-2 p-4 bg-amber-50/20 border border-amber-100/80 rounded-2xl"
                                     >
-                                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Target Market</span>
+                                        <span className="text-[9px] font-black text-amber-600 uppercase tracking-widest">Target Market</span>
                                         <p className="text-slate-600 text-[11px] font-semibold leading-relaxed">{profile.target_market || 'N/A'}</p>
                                     </motion.div>
                                 </div>
                             </div>
 
-                            {/* Product & Tech Stack */}
-                            <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-2xl shadow-slate-100/20 text-left space-y-6">
-                                <h3 className="text-xs font-black text-slate-450 uppercase tracking-widest flex items-center gap-2 mb-4">
-                                    <Code size={16} className="text-[#EC4899]" /> Product & Tech Stack
+                            {/* Product & Tech Stack: Sky Blue-cyan accent border */}
+                            <div className="bg-white/80 backdrop-blur-xl p-8 rounded-[2.5rem] border border-sky-100/60 border-t-4 border-t-sky-500/80 shadow-[0_8px_30px_rgba(0,0,0,0.02)] text-left space-y-6 relative overflow-hidden group">
+                                <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-sky-500/5 to-transparent blur-2xl pointer-events-none rounded-full" />
+                                <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 mb-4">
+                                    <Code size={16} className="text-sky-600" /> Product & Tech Stack
                                 </h3>
 
                                 <div className="space-y-5">
@@ -778,7 +790,7 @@ const StartupProfile: React.FC<{ institutionId: string; onProfileUpdate?: () => 
                                             <span className="text-[9px] font-black text-slate-450 uppercase tracking-widest">Technology Stack</span>
                                             <div className="flex flex-wrap gap-2">
                                                 {profile.tech_stack.split(',').map((tech, idx) => (
-                                                    <span key={idx} className="px-3 py-1.5 bg-slate-50 border border-slate-200/60 text-slate-655 rounded-xl text-[10px] font-black uppercase tracking-wider shadow-xs">
+                                                    <span key={idx} className="px-3 py-1.5 bg-sky-50 border border-sky-200/60 text-sky-655 rounded-xl text-[10px] font-black uppercase tracking-wider shadow-xs">
                                                         {tech.trim()}
                                                     </span>
                                                 ))}
@@ -795,9 +807,9 @@ const StartupProfile: React.FC<{ institutionId: string; onProfileUpdate?: () => 
                                                 href={profile.product_demo_video} 
                                                 target="_blank" 
                                                 rel="noreferrer" 
-                                                className="flex items-center gap-2.5 p-4 bg-slate-50 hover:bg-pink-50/20 rounded-2xl text-xs font-bold text-slate-700 hover:text-[#EC4899] border border-solid border-slate-200/50 transition-all no-underline w-fit shadow-xs"
+                                                className="flex items-center gap-2.5 p-4 bg-slate-50 hover:bg-sky-50/40 rounded-2xl text-xs font-bold text-slate-700 hover:text-sky-650 border border-solid border-slate-200/50 transition-all no-underline w-fit shadow-xs"
                                             >
-                                                <Rocket size={16} className="text-[#EC4899] animate-pulse" /> Open Video Presentation <ExternalLink size={10} />
+                                                <Rocket size={16} className="text-sky-505 animate-pulse" /> Open Video Presentation <ExternalLink size={10} />
                                             </motion.a>
                                         </div>
                                     )}
@@ -827,29 +839,31 @@ const StartupProfile: React.FC<{ institutionId: string; onProfileUpdate?: () => 
 
                         {/* Right Sidebar */}
                         <div className="lg:col-span-1 space-y-8">
-                            {/* Funding card */}
-                            <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-2xl shadow-slate-100/20 text-left space-y-6">
+                            {/* Funding card: Emerald-teal border */}
+                            <div className="bg-white/80 backdrop-blur-xl p-6 rounded-[2.5rem] border border-emerald-100/60 border-t-4 border-t-emerald-500/80 shadow-[0_8px_30px_rgba(0,0,0,0.02)] text-left space-y-6 relative overflow-hidden group">
+                                <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-emerald-500/5 to-transparent blur-xl pointer-events-none rounded-full" />
                                 <h3 className="text-xs font-black text-slate-450 uppercase tracking-widest flex items-center gap-2">
-                                    <Coins size={16} className="text-[#EC4899]" /> Funding Details
+                                    <Coins size={16} className="text-emerald-600" /> Funding Details
                                 </h3>
 
                                 <div className="space-y-4 text-xs">
-                                    <div className="space-y-1 p-4 bg-slate-50 border border-slate-100 rounded-2xl shadow-xs">
-                                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Funding Stage</span>
+                                    <div className="space-y-1 p-4 bg-emerald-50/20 border border-emerald-100/80 rounded-2xl shadow-xs">
+                                        <span className="text-[9px] font-black text-emerald-605 uppercase tracking-widest">Funding Stage</span>
                                         <p className="font-bold text-slate-900 text-sm mt-0.5">{profile.stage} Round</p>
                                     </div>
 
-                                    <div className="space-y-1 p-4 bg-slate-50 border border-slate-100 rounded-2xl shadow-xs">
-                                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Target Ticket</span>
-                                        <p className="font-black text-emerald-600 text-sm mt-0.5">{profile.funding_requirement || 'Not Disclosed'}</p>
+                                    <div className="space-y-1 p-4 bg-teal-50/20 border border-teal-100/80 rounded-2xl shadow-xs">
+                                        <span className="text-[9px] font-black text-teal-605 uppercase tracking-widest">Target Ticket</span>
+                                        <p className="font-black text-emerald-650 text-sm mt-0.5">{profile.funding_requirement || 'Not Disclosed'}</p>
                                     </div>
                                 </div>
                             </div>
 
-                            {/* Leadership Founders */}
-                            <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-2xl shadow-slate-100/20 text-left space-y-6">
+                            {/* Leadership Founders: Pink-rose border */}
+                            <div className="bg-white/80 backdrop-blur-xl p-6 rounded-[2.5rem] border border-pink-100/60 border-t-4 border-t-pink-500/80 shadow-[0_8px_30px_rgba(0,0,0,0.02)] text-left space-y-6 relative overflow-hidden group">
+                                <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-pink-500/5 to-transparent blur-xl pointer-events-none rounded-full" />
                                 <h3 className="text-xs font-black text-slate-450 uppercase tracking-widest flex items-center gap-2">
-                                    <Award size={16} className="text-[#EC4899]" /> Leadership Team
+                                    <Award size={16} className="text-pink-600" /> Leadership Team
                                 </h3>
 
                                 <div className="space-y-4">
@@ -857,9 +871,9 @@ const StartupProfile: React.FC<{ institutionId: string; onProfileUpdate?: () => 
                                         <motion.div 
                                             whileHover={{ scale: 1.01 }}
                                             key={idx} 
-                                            className="flex gap-4 items-start p-3 bg-slate-50/50 hover:bg-slate-50 border border-slate-100/30 rounded-2.5rem transition-all shadow-xs"
+                                            className="flex gap-4 items-start p-3.5 bg-pink-50/10 hover:bg-pink-50/20 border border-pink-100/30 rounded-2.5rem transition-all shadow-xs"
                                         >
-                                            <div className="w-12 h-12 bg-pink-50 text-[#EC4899] rounded-2xl overflow-hidden flex items-center justify-center font-black text-sm shrink-0 border border-slate-100 shadow-inner">
+                                            <div className="w-12 h-12 bg-pink-50 text-[#EC4899] rounded-2xl overflow-hidden flex items-center justify-center font-black text-sm shrink-0 border border-pink-200 shadow-inner">
                                                 {founder.photo_url ? (
                                                     <img src={founder.photo_url} alt={founder.name} className="w-full h-full object-cover" />
                                                 ) : (
@@ -867,7 +881,7 @@ const StartupProfile: React.FC<{ institutionId: string; onProfileUpdate?: () => 
                                                 )}
                                             </div>
                                             <div className="flex-1 text-left min-w-0">
-                                                <h4 className="font-black text-slate-900 text-xs">{founder.name}</h4>
+                                                <h4 className="font-black text-slate-905 text-xs">{founder.name}</h4>
                                                 <p className="text-[10px] text-[#EC4899] font-black mt-0.5">{founder.role}</p>
                                                 {founder.linkedin && (
                                                     <a href={founder.linkedin} target="_blank" rel="noreferrer" className="inline-block mt-2.5 text-[9px] font-black text-indigo-650 hover:underline">
@@ -883,7 +897,7 @@ const StartupProfile: React.FC<{ institutionId: string; onProfileUpdate?: () => 
                     </motion.div>
                 )}
 
-                {/* Hiring Listings Tab */}
+                {/* Hiring Listings Tab: Violet/Indigo Theme */}
                 {activeWorkspaceTab === 'opportunities' && (
                     <motion.div
                         key="opportunities"
@@ -899,7 +913,7 @@ const StartupProfile: React.FC<{ institutionId: string; onProfileUpdate?: () => 
                                 whileHover={{ scale: 1.02 }}
                                 whileTap={{ scale: 0.98 }}
                                 onClick={() => handleOpenOppModal(null)}
-                                className="px-5 py-3 bg-[#EC4899] text-white hover:bg-pink-600 rounded-2xl text-xs font-black shadow-lg shadow-pink-500/20 transition-all border-none cursor-pointer"
+                                className="px-5 py-3 bg-indigo-600 hover:bg-indigo-505 text-white rounded-2xl text-xs font-black shadow-lg shadow-indigo-650/20 transition-all border-none cursor-pointer"
                             >
                                 Publish Listing
                             </motion.button>
@@ -915,13 +929,13 @@ const StartupProfile: React.FC<{ institutionId: string; onProfileUpdate?: () => 
                                     <motion.div 
                                         whileHover={{ y: -4, scale: 1.015 }}
                                         key={opp._id || opp.id} 
-                                        className="p-6 bg-white border border-slate-100 hover:border-pink-200 rounded-[2.5rem] shadow-2xl shadow-slate-100/20 space-y-4 flex flex-col justify-between transition-all"
+                                        className="p-6 bg-white/80 border border-indigo-100/60 border-t-4 border-t-indigo-500/80 rounded-[2.5rem] shadow-md space-y-4 flex flex-col justify-between transition-all"
                                     >
                                         <div className="space-y-3">
                                             <div className="flex justify-between items-start">
                                                 <div className="space-y-1">
                                                     <h4 className="font-black text-slate-900 text-sm tracking-tight">{opp.title}</h4>
-                                                    <span className="inline-block px-3 py-1 bg-pink-50 border border-pink-100 text-[#EC4899] text-[9px] font-black rounded-lg uppercase tracking-wide">
+                                                    <span className="inline-block px-3 py-1 bg-indigo-50 border border-indigo-100 text-indigo-655 text-[9px] font-black rounded-lg uppercase tracking-wide">
                                                         {opp.type}
                                                     </span>
                                                 </div>
@@ -934,11 +948,11 @@ const StartupProfile: React.FC<{ institutionId: string; onProfileUpdate?: () => 
 
                                         <div className="flex justify-between items-center pt-4 border-t border-slate-50/50 bg-slate-50/50 -mx-6 -mb-6 p-4 rounded-b-[2.5rem]">
                                             <div className="text-[9px] font-black text-slate-400 uppercase tracking-wider flex items-center gap-3">
-                                                <span className="flex items-center gap-1"><MapPin size={10} className="text-[#EC4899]" /> {opp.locationType} ({opp.location})</span>
+                                                <span className="flex items-center gap-1"><MapPin size={10} className="text-indigo-655" /> {opp.locationType} ({opp.location})</span>
                                                 {opp.salaryMin && <span>💰 {opp.salaryMin} - {opp.salaryMax}</span>}
                                             </div>
                                             <div className="flex gap-2">
-                                                <button onClick={() => handleOpenOppModal(opp)} className="p-2 text-slate-400 hover:text-[#EC4899] bg-white border border-slate-200 rounded-xl cursor-pointer shadow-xs"><Edit2 size={13} /></button>
+                                                <button onClick={() => handleOpenOppModal(opp)} className="p-2 text-slate-400 hover:text-indigo-600 bg-white border border-slate-200 rounded-xl cursor-pointer shadow-xs"><Edit2 size={13} /></button>
                                                 {opp.status === 'active' && <button onClick={() => handleCloseOpp(opp._id || opp.id)} className="p-2 text-slate-400 hover:text-red-500 bg-white border border-slate-200 rounded-xl cursor-pointer shadow-xs" title="Close"><X size={13} /></button>}
                                                 <button onClick={() => handleDeleteOpp(opp._id || opp.id)} className="p-2 text-slate-400 hover:text-red-650 bg-white border border-slate-200 rounded-xl cursor-pointer shadow-xs"><Trash2 size={13} /></button>
                                             </div>
@@ -954,7 +968,7 @@ const StartupProfile: React.FC<{ institutionId: string; onProfileUpdate?: () => 
                     </motion.div>
                 )}
 
-                {/* Applicants Tab */}
+                {/* Applicants Tab: Emerald Theme */}
                 {activeWorkspaceTab === 'applicants' && (
                     <motion.div
                         key="applicants"
@@ -976,16 +990,16 @@ const StartupProfile: React.FC<{ institutionId: string; onProfileUpdate?: () => 
                                     <motion.div 
                                         whileHover={{ scale: 1.01 }}
                                         key={app._id} 
-                                        className="p-6 bg-white border border-slate-100 rounded-[2.5rem] shadow-2xl shadow-slate-100/20 flex flex-col md:flex-row md:items-center justify-between gap-4 text-left transition-all"
+                                        className="p-6 bg-white border border-emerald-100/60 border-l-4 border-l-emerald-500/80 rounded-[2rem] shadow-md flex flex-col md:flex-row md:items-center justify-between gap-4 text-left transition-all"
                                     >
                                         <div className="space-y-2">
                                             <div className="flex items-center gap-3">
                                                 <h4 className="font-black text-slate-900 text-sm tracking-tight">{app.full_name}</h4>
                                                 <span className={`px-2.5 py-1 text-[8.5px] font-black rounded-lg uppercase tracking-wider flex items-center gap-1 shadow-xs ${
-                                                    app.status === 'accepted' ? 'bg-emerald-50 text-emerald-700' :
-                                                    app.status === 'rejected' ? 'bg-rose-50 text-rose-700' :
-                                                    app.status === 'shortlisted' ? 'bg-indigo-50 text-indigo-700' :
-                                                    'bg-amber-50 text-amber-700'
+                                                    app.status === 'accepted' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' :
+                                                    app.status === 'rejected' ? 'bg-rose-50 text-rose-700 border border-rose-100' :
+                                                    app.status === 'shortlisted' ? 'bg-indigo-50 text-indigo-700 border border-indigo-100' :
+                                                    'bg-amber-50 text-amber-700 border border-amber-100'
                                                 }`}>
                                                     <span className={`w-1.5 h-1.5 rounded-full ${
                                                         app.status === 'accepted' ? 'bg-emerald-500' :
@@ -1004,12 +1018,12 @@ const StartupProfile: React.FC<{ institutionId: string; onProfileUpdate?: () => 
 
                                         <div className="flex items-center gap-3 shrink-0">
                                             {app.resume_url && (
-                                                <a href={app.resume_url} target="_blank" rel="noreferrer" className="p-3 bg-slate-50 hover:bg-pink-50 text-slate-700 rounded-xl border border-solid border-slate-200 transition-all text-xs font-bold no-underline shadow-xs">
+                                                <a href={app.resume_url} target="_blank" rel="noreferrer" className="p-3 bg-slate-50 hover:bg-emerald-50 text-slate-700 rounded-xl border border-solid border-slate-200 transition-all text-xs font-bold no-underline shadow-xs">
                                                     Resume
                                                 </a>
                                             )}
                                             {app.portfolio_url && (
-                                                <a href={app.portfolio_url} target="_blank" rel="noreferrer" className="p-3 bg-slate-50 hover:bg-pink-50 text-slate-700 rounded-xl border border-solid border-slate-200 transition-all text-xs font-bold no-underline shadow-xs">
+                                                <a href={app.portfolio_url} target="_blank" rel="noreferrer" className="p-3 bg-slate-50 hover:bg-emerald-50 text-slate-700 rounded-xl border border-solid border-slate-200 transition-all text-xs font-bold no-underline shadow-xs">
                                                     Portfolio
                                                 </a>
                                             )}
@@ -1036,7 +1050,7 @@ const StartupProfile: React.FC<{ institutionId: string; onProfileUpdate?: () => 
                     </motion.div>
                 )}
 
-                {/* Stats Tab */}
+                {/* Stats Tab: Amber Theme */}
                 {activeWorkspaceTab === 'stats' && (
                     <motion.div
                         key="stats"
@@ -1050,17 +1064,17 @@ const StartupProfile: React.FC<{ institutionId: string; onProfileUpdate?: () => 
 
                         <div className="grid grid-cols-2 md:grid-cols-3 gap-6 text-left">
                             {[
-                                { label: 'Total Listings', val: opportunities.length, color: 'hover:shadow-pink-500/5 hover:border-pink-200' },
-                                { label: 'Applicants Count', val: applicants.length, color: 'hover:shadow-indigo-500/5 hover:border-indigo-200' },
-                                { label: 'Venture Interest', val: analytics?.investor_interest || 2, color: 'hover:shadow-emerald-500/5 hover:border-emerald-200' },
-                                { label: 'Advisors Connected', val: analytics?.mentor_interest || 1, color: 'hover:shadow-amber-500/5 hover:border-amber-200' },
-                                { label: 'Collaboration Outreach', val: analytics?.collaboration_requests || 2, color: 'hover:shadow-purple-500/5 hover:border-purple-200' },
-                                { label: 'Profile Followers', val: analytics?.profile_views ? Math.floor(analytics.profile_views * 0.35) : 42, color: 'hover:shadow-sky-500/5 hover:border-sky-200' }
+                                { label: 'Total Listings', val: opportunities.length, color: 'hover:shadow-pink-500/5 hover:border-pink-200 border-t-pink-400' },
+                                { label: 'Applicants Count', val: applicants.length, color: 'hover:shadow-indigo-500/5 hover:border-indigo-200 border-t-indigo-405' },
+                                { label: 'Venture Interest', val: analytics?.investor_interest || 2, color: 'hover:shadow-emerald-500/5 hover:border-emerald-200 border-t-emerald-405' },
+                                { label: 'Advisors Connected', val: analytics?.mentor_interest || 1, color: 'hover:shadow-amber-500/5 hover:border-amber-200 border-t-amber-400' },
+                                { label: 'Collaboration Outreach', val: analytics?.collaboration_requests || 2, color: 'hover:shadow-purple-500/5 hover:border-purple-200 border-t-purple-400' },
+                                { label: 'Profile Followers', val: analytics?.profile_views ? Math.floor(analytics.profile_views * 0.35) : 42, color: 'hover:shadow-sky-500/5 hover:border-sky-200 border-t-sky-400' }
                             ].map((stat, idx) => (
                                 <motion.div 
                                     whileHover={{ y: -4, scale: 1.015 }}
                                     key={idx} 
-                                    className={`p-6 bg-white border border-slate-100 shadow-2xl shadow-slate-100/20 rounded-[2.5rem] space-y-4 transition-all ${stat.color}`}
+                                    className={`p-6 bg-white/80 backdrop-blur-xl border border-slate-200/80 border-t-4 shadow-md rounded-[2rem] space-y-4 transition-all ${stat.color}`}
                                 >
                                     <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{stat.label}</span>
                                     <h4 className="text-2xl font-black text-slate-950 tracking-tight">{stat.val}</h4>

@@ -3,7 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Sparkles, CheckCircle2, Lock, Play, ChevronRight, 
   BookOpen, Wrench, ShieldAlert, Compass, Target, HelpCircle,
-  TrendingUp, Award, Zap, Activity, Info, FileText, ChevronLeft, MapPin, Check
+  TrendingUp, Award, Zap, Activity, Info, FileText, ChevronLeft, MapPin, Check,
+  LineChart, BarChart2, Layers, DollarSign, Users2, ShieldCheck
 } from 'lucide-react';
 
 interface Task {
@@ -33,7 +34,8 @@ const PHASES = [
     text: "text-blue-600",
     badge: "bg-blue-500 text-white",
     glow: "shadow-blue-500/10 hover:shadow-blue-500/20",
-    accent: "bg-blue-500"
+    accent: "bg-blue-500",
+    gradient: "from-blue-500 to-cyan-400"
   },
   {
     id: 2,
@@ -43,7 +45,8 @@ const PHASES = [
     text: "text-purple-600",
     badge: "bg-purple-500 text-white",
     glow: "shadow-purple-500/10 hover:shadow-purple-500/20",
-    accent: "bg-purple-500"
+    accent: "bg-purple-500",
+    gradient: "from-purple-500 to-pink-400"
   },
   {
     id: 3,
@@ -53,7 +56,8 @@ const PHASES = [
     text: "text-emerald-600",
     badge: "bg-emerald-500 text-white",
     glow: "shadow-emerald-500/10 hover:shadow-emerald-500/20",
-    accent: "bg-emerald-500"
+    accent: "bg-emerald-500",
+    gradient: "from-emerald-500 to-teal-400"
   },
   {
     id: 4,
@@ -63,7 +67,8 @@ const PHASES = [
     text: "text-amber-600",
     badge: "bg-amber-500 text-white",
     glow: "shadow-amber-500/10 hover:shadow-amber-500/20",
-    accent: "bg-amber-500"
+    accent: "bg-amber-500",
+    gradient: "from-amber-500 to-orange-400"
   }
 ];
 
@@ -232,10 +237,23 @@ const INITIAL_MILESTONES: Milestone[] = [
   }
 ];
 
+// Interactive SVG charts datasets
+const TRACTION_PROJECTIONS = [
+  { label: "M1", users: 120, revenue: 10, confidence: 65, index: 0 },
+  { label: "M2", users: 340, revenue: 25, confidence: 70, index: 1 },
+  { label: "M3", users: 890, revenue: 60, confidence: 76, index: 2 },
+  { label: "M4", users: 1800, revenue: 140, confidence: 82, index: 3 },
+  { label: "M5", users: 3800, revenue: 310, confidence: 89, index: 4 },
+  { label: "M6", users: 8500, revenue: 650, confidence: 95, index: 5 }
+];
+
 export default function StartupRoadmap() {
   const [milestones, setMilestones] = useState<Milestone[]>(INITIAL_MILESTONES);
   const [selectedMilestoneId, setSelectedMilestoneId] = useState<string | null>("m3");
   const [activePhaseId, setActivePhaseId] = useState(1);
+  const [chartMode, setChartMode] = useState<'traction' | 'validation'>('traction');
+  const [hoveredChartPoint, setHoveredChartPoint] = useState<number | null>(null);
+  
   const [notes, setNotes] = useState<Record<string, string>>({
     m1: "Idea validator reports were saved. Demand score was 84/100.",
     m2: "Interviewed 8 designers. Main pain point was team wireframe handoffs.",
@@ -306,7 +324,6 @@ export default function StartupRoadmap() {
       return `Attention: "${selectedMilestone.title}" is currently locked. Complete the predecessor objectives in validation phase to proceed.`;
     }
 
-    // Active status advice
     switch (selectedMilestone.id) {
       case "m3":
         return "Insight: competitor analysis is your critical validation objective. Check competitor pricing plans and map them against founder feature gaps to isolate our initial product advantage.";
@@ -318,94 +335,277 @@ export default function StartupRoadmap() {
   };
 
   return (
-    <div className="space-y-8 font-sans pb-10 text-left relative min-h-screen">
+    <div className="space-y-8 font-sans pb-12 text-left relative min-h-screen">
       {/* Background blueprint grids & aurora beams */}
-      <div className="absolute inset-0 bg-[linear-gradient(rgba(241,245,249,0.5)_1px,transparent_1px),linear-gradient(90deg,rgba(241,245,249,0.5)_1px,transparent_1px)] bg-[size:32px_32px] pointer-events-none -z-10 opacity-60" />
-      <div className="absolute top-10 right-10 w-80 h-80 bg-blue-500/5 rounded-full blur-[120px] pointer-events-none -z-10" />
-      <div className="absolute bottom-20 left-10 w-96 h-96 bg-purple-500/5 rounded-full blur-[140px] pointer-events-none -z-10" />
+      <div className="absolute inset-0 bg-[linear-gradient(rgba(99,102,241,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(99,102,241,0.03)_1px,transparent_1px)] bg-[size:32px_32px] pointer-events-none -z-10 opacity-70" />
+      <div className="absolute top-10 right-10 w-[500px] h-[500px] bg-gradient-to-tr from-sky-400/10 to-indigo-300/10 blur-[130px] rounded-full pointer-events-none -z-10" />
+      <div className="absolute bottom-20 left-10 w-[600px] h-[600px] bg-gradient-to-tr from-purple-300/10 to-pink-300/10 blur-[150px] rounded-full pointer-events-none -z-10" />
 
       {/* Asymmetrical Page Header */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 bg-gradient-to-r from-white/60 to-transparent p-6 rounded-3xl border border-white/20 backdrop-blur-sm shadow-xs">
-        <div className="space-y-1">
-          <div className="inline-flex items-center gap-2 px-3 py-1 bg-pink-500/10 text-pink-500 rounded-full text-[10px] font-black tracking-widest uppercase mb-1">
-            <Compass size={12} className="animate-spin-slow" /> Mission Command Center
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 bg-white/70 border border-slate-200/80 backdrop-blur-xl p-8 rounded-[2.5rem] shadow-lg">
+        <div className="space-y-2">
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-gradient-to-r from-pink-50 to-indigo-50 border border-indigo-100 text-indigo-650 rounded-full text-[10px] font-black tracking-widest uppercase mb-1">
+            <Compass size={12} className="animate-spin-slow" /> Mission Control Dashboard
           </div>
-          <h1 className="text-2xl font-black text-slate-900 tracking-tight">
+          <h1 className="text-3xl sm:text-5xl font-black text-slate-900 tracking-tight leading-none">
             Founder Adventure Roadmap
           </h1>
-          <p className="text-xs text-slate-500 max-w-xl font-medium leading-relaxed">
-            Manage your venture lifecycle. Track milestones from early pre-validation checkpoints to MVP prototype deployment and VC pitches.
+          <p className="text-slate-500 text-xs sm:text-sm font-semibold max-w-2xl leading-relaxed">
+            Manage your venture lifecycle. Track milestones from early pre-validation checkpoints to MVP prototype deployment and VC seed-round pitching.
           </p>
         </div>
 
-        {/* Global Progress Rings */}
-        <div className="flex items-center gap-6 bg-white/70 backdrop-blur-xl p-4 rounded-2xl border border-white/80 shadow-sm shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="relative w-12 h-12 flex items-center justify-center">
+        {/* Global Progress Indicators */}
+        <div className="flex items-center gap-8 bg-slate-50/50 p-5 rounded-3xl border border-slate-200/60 shrink-0">
+          <div className="flex items-center gap-4">
+            <div className="relative w-14 h-14 flex items-center justify-center bg-white rounded-2xl shadow-sm border border-slate-100">
               <svg className="w-full h-full transform -rotate-90">
-                <circle cx="24" cy="24" r="20" stroke="#f1f5f9" strokeWidth="4" fill="transparent" />
-                <circle cx="24" cy="24" r="20" stroke="#EC4899" strokeWidth="4" fill="transparent"
-                  strokeDasharray="125.6"
-                  strokeDashoffset={125.6 - (125.6 * totalProgress) / 100}
+                <circle cx="28" cy="28" r="22" stroke="#f1f5f9" strokeWidth="4.5" fill="transparent" />
+                <circle cx="28" cy="28" r="22" stroke="#EC4899" strokeWidth="4.5" fill="transparent"
+                  strokeDasharray="138.2"
+                  strokeDashoffset={138.2 - (138.2 * totalProgress) / 100}
                   strokeLinecap="round"
                 />
               </svg>
-              <span className="absolute text-[10px] font-black text-slate-900 font-mono">{totalProgress}%</span>
+              <span className="absolute text-xs font-black text-slate-850 font-mono">{totalProgress}%</span>
             </div>
             <div>
-              <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Mission Success</h4>
+              <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Venture Velocity</h4>
               <p className="text-xs font-bold text-slate-800">Total Completion</p>
             </div>
           </div>
 
-          <div className="w-[1px] h-10 bg-slate-100" />
+          <div className="w-[1px] h-12 bg-slate-200" />
 
-          <div className="flex items-center gap-3">
-            <div className="relative w-12 h-12 flex items-center justify-center">
+          <div className="flex items-center gap-4">
+            <div className="relative w-14 h-14 flex items-center justify-center bg-white rounded-2xl shadow-sm border border-slate-100">
               <svg className="w-full h-full transform -rotate-90">
-                <circle cx="24" cy="24" r="20" stroke="#f1f5f9" strokeWidth="4" fill="transparent" />
-                <circle cx="24" cy="24" r="20" stroke="#6366f1" strokeWidth="4" fill="transparent"
-                  strokeDasharray="125.6"
-                  strokeDashoffset={125.6 - (125.6 * 78) / 100}
+                <circle cx="28" cy="28" r="22" stroke="#f1f5f9" strokeWidth="4.5" fill="transparent" />
+                <circle cx="28" cy="28" r="22" stroke="#6366f1" strokeWidth="4.5" fill="transparent"
+                  strokeDasharray="138.2"
+                  strokeDashoffset={138.2 - (138.2 * 84) / 100}
                   strokeLinecap="round"
                 />
               </svg>
-              <span className="absolute text-[10px] font-black text-slate-900 font-mono">78%</span>
+              <span className="absolute text-xs font-black text-slate-850 font-mono">84%</span>
             </div>
             <div>
-              <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Venture Health</h4>
-              <p className="text-xs font-bold text-slate-800">Operational Index</p>
+              <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Operational Health</h4>
+              <p className="text-xs font-bold text-slate-800">Validation Score</p>
             </div>
           </div>
         </div>
       </div>
 
+      {/* 📊 VENTURE PROGRESS COCKPIT: PREMIUM INTERACTIVE SVG GRAPH & PROGRESS BARS */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        
+        {/* SVG Area Graph: Traction Growth Projections */}
+        <div className="lg:col-span-2 bg-white/80 border border-slate-200/80 backdrop-blur-xl rounded-[2.5rem] p-6 shadow-md flex flex-col justify-between">
+          <div className="flex items-center justify-between mb-6">
+            <div className="space-y-1">
+              <span className="text-[10px] font-black text-slate-450 uppercase tracking-widest flex items-center gap-1.5"><LineChart size={13} className="text-indigo-500" /> Analytics Engine</span>
+              <h3 className="text-sm font-black text-slate-850">
+                {chartMode === 'traction' ? 'Projected Active Users & MoM Revenue (Runway: 18m)' : 'Venture Validation Confidence Rating'}
+              </h3>
+            </div>
+            
+            {/* Toggle Modes */}
+            <div className="bg-slate-100 p-1 rounded-2xl border border-slate-200 flex gap-1">
+              <button 
+                onClick={() => setChartMode('traction')}
+                className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase transition-all cursor-pointer ${chartMode === 'traction' ? 'bg-white text-indigo-650 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+              >
+                Traction MoM
+              </button>
+              <button 
+                onClick={() => setChartMode('validation')}
+                className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase transition-all cursor-pointer ${chartMode === 'validation' ? 'bg-white text-indigo-650 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+              >
+                Validation Rate
+              </button>
+            </div>
+          </div>
+
+          {/* SVG Line / Area Projection Chart */}
+          <div className="relative w-full h-[220px] bg-slate-50/50 border border-slate-200/60 rounded-3xl p-4 flex items-center justify-center">
+            <svg viewBox="0 0 540 220" className="w-full h-full overflow-visible">
+              <defs>
+                <linearGradient id="tractionAreaGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#6366f1" stopOpacity="0.25" />
+                  <stop offset="100%" stopColor="#6366f1" stopOpacity="0.0" />
+                </linearGradient>
+                <linearGradient id="validationAreaGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#ec4899" stopOpacity="0.25" />
+                  <stop offset="100%" stopColor="#ec4899" stopOpacity="0.0" />
+                </linearGradient>
+              </defs>
+
+              {/* Grid Lines */}
+              {[40, 80, 120, 160].map((y, idx) => (
+                <line key={idx} x1="40" y1={y} x2="520" y2={y} stroke="#e2e8f0" strokeDasharray="4 4" strokeWidth="1" />
+              ))}
+              
+              {/* Plot Paths */}
+              {chartMode === 'traction' ? (
+                <>
+                  {/* Area beneath curve */}
+                  <path 
+                    d="M 60 180 C 130 165, 200 135, 280 110 C 360 85, 430 45, 500 20 L 500 180 Z" 
+                    fill="url(#tractionAreaGrad)" 
+                  />
+                  {/* Bezier Path */}
+                  <path 
+                    d="M 60 180 C 130 165, 200 135, 280 110 C 360 85, 430 45, 500 20" 
+                    fill="none" 
+                    stroke="#6366f1" 
+                    strokeWidth="3" 
+                    strokeLinecap="round"
+                  />
+                </>
+              ) : (
+                <>
+                  {/* Area beneath curve */}
+                  <path 
+                    d="M 60 160 C 130 150, 200 138, 280 120 C 360 108, 430 92, 500 65 L 500 180 Z" 
+                    fill="url(#validationAreaGrad)" 
+                  />
+                  {/* Bezier Path */}
+                  <path 
+                    d="M 60 160 C 130 150, 200 138, 280 120 C 360 108, 430 92, 500 65" 
+                    fill="none" 
+                    stroke="#ec4899" 
+                    strokeWidth="3" 
+                    strokeLinecap="round"
+                  />
+                </>
+              )}
+
+              {/* Data points */}
+              {TRACTION_PROJECTIONS.map((pt, i) => {
+                // Calculate point coordinates matching Bezier approximations
+                let x = 60 + i * 88;
+                let y = 180;
+                if (chartMode === 'traction') {
+                  // Approximating curve Y points: M1=180, M2=158, M3=128, M4=100, M5=62, M6=20
+                  const yVals = [180, 158, 128, 100, 62, 20];
+                  y = yVals[i];
+                } else {
+                  // Approximating curve Y points: M1=160, M2=146, M3=130, M4=116, M5=98, M6=65
+                  const yVals = [160, 146, 130, 116, 98, 65];
+                  y = yVals[i];
+                }
+
+                const isHovered = hoveredChartPoint === i;
+
+                return (
+                  <g key={i}>
+                    {/* Tick label */}
+                    <text x={x} y="202" fill="#94a3b8" fontSize="10" fontWeight="bold" textAnchor="middle">{pt.label}</text>
+                    
+                    {/* Circle Node */}
+                    <circle 
+                      cx={x} 
+                      cy={y} 
+                      r={isHovered ? 7 : 4} 
+                      fill={chartMode === 'traction' ? '#6366f1' : '#ec4899'} 
+                      stroke="#ffffff" 
+                      strokeWidth="2" 
+                      className="cursor-pointer transition-all duration-200"
+                      onMouseEnter={() => setHoveredChartPoint(i)}
+                      onMouseLeave={() => setHoveredChartPoint(null)}
+                    />
+
+                    {/* Tooltip Overlay */}
+                    {isHovered && (
+                      <g>
+                        <rect x={x - 45} y={y - 38} width="90" height="26" rx="6" fill="#1e293b" />
+                        <text x={x} y={y - 21} fill="#ffffff" fontSize="9" fontWeight="black" textAnchor="middle">
+                          {chartMode === 'traction' ? `${pt.users} users / $${pt.revenue}k` : `Conf: ${pt.confidence}%`}
+                        </text>
+                      </g>
+                    )}
+                  </g>
+                );
+              })}
+            </svg>
+          </div>
+          
+          <div className="flex items-center justify-between text-[9px] font-black text-slate-400 uppercase tracking-widest pt-4 border-t border-slate-100 mt-4">
+            <span>Graph shows 6-Month Scale Projections</span>
+            <span>Hover nodes to inspect values</span>
+          </div>
+        </div>
+
+        {/* Phase Completion Status Columns */}
+        <div className="bg-white/80 border border-slate-200/80 backdrop-blur-xl rounded-[2.5rem] p-6 shadow-md flex flex-col justify-between">
+          <div className="space-y-1 mb-6">
+            <span className="text-[10px] font-black text-slate-450 uppercase tracking-widest flex items-center gap-1.5"><BarChart2 size={13} className="text-pink-500" /> Completion Index</span>
+            <h3 className="text-sm font-black text-slate-850">Phase Milestone Completion Rate</h3>
+          </div>
+
+          <div className="h-[220px] bg-slate-50/50 border border-slate-200/60 rounded-3xl p-6 flex items-end justify-around relative">
+            {PHASES.map((p) => {
+              const progressVal = getPhaseProgress(p.id);
+              // Max height is 160px for 100% completion
+              const barHeight = Math.max(8, (progressVal / 100) * 140);
+              
+              return (
+                <div key={p.id} className="flex flex-col items-center group relative">
+                  {/* Tooltip percentage on hover */}
+                  <span className="absolute -top-7 px-2 py-1 bg-slate-900 text-white rounded-lg text-[8px] font-black opacity-0 group-hover:opacity-100 transition-opacity duration-200 shadow-md">
+                    {progressVal}% Done
+                  </span>
+
+                  {/* Vertical bar */}
+                  <div className="w-8 bg-slate-200/65 rounded-full h-[140px] flex items-end justify-center overflow-hidden border border-slate-150 shadow-inner">
+                    <motion.div 
+                      initial={{ height: 0 }}
+                      animate={{ height: barHeight }}
+                      transition={{ duration: 0.8, ease: "easeOut" }}
+                      className={`w-full bg-gradient-to-t ${p.gradient} rounded-full`}
+                    />
+                  </div>
+
+                  <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider mt-3">{p.tag}</span>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="flex items-center justify-between text-[9px] font-black text-slate-400 uppercase tracking-widest pt-4 border-t border-slate-100 mt-4">
+            <span>Synced to task checklist</span>
+            <span>Updates dynamically</span>
+          </div>
+        </div>
+      </div>
+
       {/* Phase Segment Selectors */}
-      <div className="flex gap-2.5 overflow-x-auto pb-1 scrollbar-none">
+      <div className="flex gap-4 overflow-x-auto pb-1 scrollbar-none">
         {PHASES.map((p) => {
           const isActive = activePhaseId === p.id;
           const prog = getPhaseProgress(p.id);
           return (
             <motion.button
-              whileHover={{ y: -2 }}
+              whileHover={{ y: -3 }}
               key={p.id}
               onClick={() => setActivePhaseId(p.id)}
-              className={`p-4 rounded-[2rem] border backdrop-blur-xl text-left transition-all cursor-pointer flex flex-col justify-between shrink-0 min-w-[200px] border-solid relative overflow-hidden group ${
+              className={`p-5 rounded-[2rem] border-2 backdrop-blur-xl text-left transition-all cursor-pointer flex flex-col justify-between shrink-0 min-w-[230px] border-solid relative overflow-hidden group ${
                 isActive 
-                  ? 'bg-white shadow-[0_8px_30px_rgba(99,102,241,0.06)]' 
-                  : 'bg-white/50 border-slate-150/40 hover:bg-white/70'
+                  ? 'bg-white border-indigo-500/25 shadow-lg shadow-indigo-500/5' 
+                  : 'bg-white/50 border-slate-200/60 hover:bg-white/70'
               }`}
             >
-              {/* Progress track border color indicator */}
-              <div className={`absolute left-0 top-0 bottom-0 w-2.5 ${isActive ? p.accent : 'bg-slate-200'}`} />
+              {/* Highlight active block theme */}
+              <div className={`absolute left-0 top-0 bottom-0 w-3 bg-gradient-to-b ${isActive ? p.gradient : 'from-slate-200 to-slate-300'}`} />
 
-              <div className="pl-2 space-y-1">
-                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{p.tag}</span>
-                <h4 className="text-xs font-black text-slate-800">{p.title}</h4>
+              <div className="pl-3 space-y-1">
+                <span className="text-[9px] font-black text-slate-455 uppercase tracking-widest">{p.tag}</span>
+                <h4 className="text-xs sm:text-sm font-black text-slate-800 leading-snug">{p.title}</h4>
               </div>
-              <div className="pl-2 flex items-center justify-between mt-4">
-                <span className="text-[10px] font-bold text-slate-400 font-mono">Completed: {prog}%</span>
-                <ChevronRight className="w-3.5 h-3.5 text-slate-300 group-hover:translate-x-1 transition-transform" />
+              <div className="pl-3 flex items-center justify-between mt-4">
+                <span className="text-[10px] font-extrabold text-slate-400 font-mono">Completion: {prog}%</span>
+                <ChevronRight className="w-3.5 h-3.5 text-slate-350 group-hover:translate-x-1 transition-transform" />
               </div>
             </motion.button>
           );
@@ -417,19 +617,19 @@ export default function StartupRoadmap() {
         
         {/* Interactive Horizontal Timeline Map */}
         <div className="xl:col-span-8 space-y-6">
-          <div className="bg-white/80 border border-white/60 backdrop-blur-xl rounded-[2.5rem] p-6 shadow-[0_8px_30px_rgb(0,0,0,0.02)] relative overflow-hidden">
+          <div className="bg-white/80 border border-slate-200/80 backdrop-blur-xl rounded-[2.5rem] p-6 shadow-md relative overflow-hidden">
             
             {/* Ambient grid decorator */}
             <div className="absolute inset-0 bg-[radial-gradient(#e2e8f0_1px,transparent_1px)] bg-[size:16px_16px] pointer-events-none opacity-40" />
 
             <div className="flex items-center justify-between mb-8 relative z-10">
               <div className="flex items-center space-x-2">
-                <Target className="w-4 h-4 text-indigo-500" />
-                <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">
+                <Target className="w-4 h-4 text-indigo-500 animate-pulse" />
+                <h3 className="text-xs font-black text-slate-450 uppercase tracking-widest">
                   Mission Blueprint Navigator
                 </h3>
               </div>
-              <span className="text-[9px] font-black text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded uppercase">
+              <span className="text-[9px] font-black text-indigo-650 bg-indigo-50 border border-indigo-100 px-3 py-1 rounded-full uppercase tracking-wider">
                 Interactive Grid View
               </span>
             </div>
@@ -454,13 +654,13 @@ export default function StartupRoadmap() {
                         whileHover={!isLocked ? { scale: 1.1, y: -4 } : {}}
                         whileTap={!isLocked ? { scale: 0.95 } : {}}
                         onClick={() => !isLocked && setSelectedMilestoneId(m.id)}
-                        className={`w-14 h-14 rounded-2xl border flex items-center justify-center cursor-pointer transition-all shadow-md relative z-10 ${
+                        className={`w-16 h-16 rounded-2xl border flex items-center justify-center cursor-pointer transition-all shadow-md relative z-10 ${
                           isActive 
                             ? 'bg-gradient-to-tr from-pink-500 to-[#EC4899] text-white border-pink-400 ring-4 ring-pink-500/10' 
                             : isCompleted 
                             ? 'bg-emerald-50 border-emerald-200 text-emerald-600'
                             : isLocked
-                            ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
+                            ? 'bg-slate-100 border-slate-200/80 text-slate-400 cursor-not-allowed'
                             : 'bg-white border-slate-200 hover:border-indigo-400 text-slate-600'
                         }`}
                       >
@@ -474,13 +674,13 @@ export default function StartupRoadmap() {
 
                         {/* Status Beacon Pulse */}
                         {m.status === 'active' && (
-                          <span className="absolute -top-1 -right-1 w-3 h-3 bg-pink-500 border-2 border-white rounded-full animate-pulse" />
+                          <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-pink-500 border-2 border-white rounded-full animate-pulse" />
                         )}
                       </motion.div>
 
                       {/* Milestone Title */}
                       <div className="mt-4 text-center max-w-[140px]">
-                        <h4 className={`text-xs font-black truncate ${isActive ? 'text-pink-600' : 'text-slate-800'}`}>
+                        <h4 className={`text-xs font-black truncate ${isActive ? 'text-pink-605' : 'text-slate-800'}`}>
                           {m.title}
                         </h4>
                         <span className="text-[9px] text-slate-400 font-bold font-mono tracking-tight block mt-0.5 uppercase">
@@ -502,13 +702,13 @@ export default function StartupRoadmap() {
           {/* Floating AI Mission Assistant Panel */}
           <div className="bg-gradient-to-r from-indigo-500/5 to-pink-500/5 border border-indigo-100/50 backdrop-blur-xl rounded-[2.5rem] p-6 shadow-sm flex items-start gap-4 text-left relative overflow-hidden">
             <div className="absolute top-0 right-0 -mt-6 -mr-6 w-24 h-24 bg-pink-500/5 rounded-full blur-xl pointer-events-none" />
-            <div className="p-3 bg-gradient-to-tr from-pink-500 to-indigo-500 text-white rounded-2xl shadow-md shrink-0">
+            <div className="p-3.5 bg-gradient-to-tr from-pink-500 to-indigo-500 text-white rounded-2xl shadow-md shrink-0">
               <Sparkles className="w-6 h-6 animate-pulse" />
             </div>
             <div className="space-y-1.5 flex-1">
-              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">AI Mission Assistant</span>
-              <h4 className="text-xs font-black text-slate-900 uppercase">Strategic Co-pilot Advice</h4>
-              <p className="text-xs text-slate-600 font-semibold leading-relaxed pr-2">
+              <span className="text-[9px] font-black text-slate-405 uppercase tracking-widest block">AI Mission Assistant</span>
+              <h4 className="text-xs font-black text-slate-850 uppercase">Strategic Co-pilot Advice</h4>
+              <p className="text-xs sm:text-sm text-slate-600 font-semibold leading-relaxed pr-2">
                 {getAICoPilotInsight()}
               </p>
             </div>
@@ -525,7 +725,7 @@ export default function StartupRoadmap() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -15 }}
                 transition={{ duration: 0.25 }}
-                className="bg-white/80 border border-white/60 backdrop-blur-xl p-6 rounded-[2.5rem] shadow-[0_12px_40px_rgba(0,0,0,0.03)] text-left space-y-6 sticky top-6 overflow-hidden"
+                className="bg-white/80 border border-slate-200/80 backdrop-blur-xl p-6 rounded-[2.5rem] shadow-xl text-left space-y-6 sticky top-6 overflow-hidden"
               >
                 {/* Milestone Node Details Header */}
                 <div className="flex justify-between items-start pb-5 border-b border-slate-100">
@@ -533,7 +733,7 @@ export default function StartupRoadmap() {
                     <span className="inline-block px-2.5 py-0.5 bg-slate-50 text-slate-500 border border-slate-200/50 text-[9px] font-black rounded-lg uppercase tracking-widest">
                       Objective Node
                     </span>
-                    <h3 className="font-extrabold text-slate-900 text-sm tracking-tight">{selectedMilestone.title}</h3>
+                    <h3 className="font-extrabold text-slate-900 text-sm sm:text-base tracking-tight">{selectedMilestone.title}</h3>
                   </div>
                   <span className={`px-2.5 py-1 text-[9px] font-black rounded-lg uppercase tracking-widest flex items-center gap-1.5 ${
                     selectedMilestone.status === 'completed' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' :
@@ -548,7 +748,7 @@ export default function StartupRoadmap() {
                 {/* Why it matters */}
                 <div className="space-y-1.5">
                   <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Objective Rationale</span>
-                  <p className="text-xs text-slate-500 leading-relaxed font-semibold">
+                  <p className="text-xs text-slate-550 leading-relaxed font-semibold">
                     {selectedMilestone.why}
                   </p>
                 </div>
@@ -591,7 +791,7 @@ export default function StartupRoadmap() {
                           <span className="flex items-center gap-2">
                             <FileText size={14} className="text-indigo-500" /> {res.name}
                           </span>
-                          <span className="text-[9px] font-black uppercase text-indigo-600 bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 rounded">
+                          <span className="text-[9px] font-black uppercase text-indigo-650 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded">
                             {res.type}
                           </span>
                         </div>
@@ -606,7 +806,7 @@ export default function StartupRoadmap() {
                     <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Recommended Stack</span>
                     <div className="flex flex-wrap gap-1.5">
                       {selectedMilestone.tools.map((tool, idx) => (
-                        <span key={idx} className="px-2.5 py-1 bg-slate-50 text-slate-500 border border-slate-150/40 text-[9px] font-black rounded-lg uppercase tracking-wider">
+                        <span key={idx} className="px-2.5 py-1 bg-slate-50 text-slate-550 border border-slate-150/40 text-[9px] font-black rounded-lg uppercase tracking-wider">
                           <Wrench className="w-2.5 h-2.5 inline mr-1 text-[#EC4899]/85" /> {tool}
                         </span>
                       ))}
@@ -622,13 +822,13 @@ export default function StartupRoadmap() {
                     value={notes[selectedMilestone.id] || ""}
                     onChange={(e) => setNotes({ ...notes, [selectedMilestone.id]: e.target.value })}
                     placeholder="Log technical details, questions, or metrics for this milestone..."
-                    className="w-full p-3 bg-slate-50 border border-slate-200/60 rounded-xl text-xs font-semibold focus:outline-none focus:border-pink-400 focus:bg-white transition-all resize-none shadow-inner"
+                    className="w-full p-3.5 bg-slate-50 border border-slate-200/60 rounded-xl text-xs font-semibold focus:outline-none focus:border-pink-400 focus:bg-white transition-all resize-none shadow-inner"
                   />
                 </div>
 
               </motion.div>
             ) : (
-              <div className="bg-white/50 border border-dashed border-slate-250/80 backdrop-blur-xl p-10 rounded-[2.5rem] text-center text-slate-400 text-xs font-bold py-36 sticky top-6 shadow-inner flex flex-col items-center justify-center gap-3">
+              <div className="bg-white/50 border border-dashed border-slate-200 backdrop-blur-xl p-10 rounded-[2.5rem] text-center text-slate-450 text-xs font-bold py-36 sticky top-6 shadow-inner flex flex-col items-center justify-center gap-3">
                 <Compass className="opacity-30" size={36} />
                 <span>Select a mission node on the left timeline to review tasks, checklists and tools.</span>
               </div>

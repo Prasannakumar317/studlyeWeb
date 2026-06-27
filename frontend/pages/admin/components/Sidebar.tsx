@@ -32,7 +32,6 @@ interface SidebarProps {
     isCollapsed: boolean;
     toggleCollapse: () => void;
 }
-
 const navItems = [
     { name: 'Overview', icon: LayoutDashboard, path: '/admin/dashboard' },
     { name: 'Students', icon: Users, path: '/admin/students' },
@@ -44,6 +43,7 @@ const navItems = [
     { name: 'Payments', icon: CreditCard, path: '/admin/payments' },
     { name: 'Advertisements', icon: Megaphone, path: '/admin/ads' },
     { name: 'Analytics', icon: BarChart3, path: '/admin/analytics' },
+    { name: 'CMS Resources', icon: PenTool, path: '/admin/resources' },
 ];
 
 const contentItems = [

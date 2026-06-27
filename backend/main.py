@@ -70,6 +70,9 @@ app.include_router(certificate_template_router)
 from startup_routes import router as startup_router
 app.include_router(startup_router)
 
+from routes.resource_routes import router as resource_router
+app.include_router(resource_router)
+
 # Touch file to trigger uvicorn reload when env changes during local dev
 # reload trigger
 

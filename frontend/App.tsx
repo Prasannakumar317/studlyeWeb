@@ -121,6 +121,9 @@ const DiscoverTechnologies = lazy(() => import('./pages/discover/DiscoverTechnol
 const DiscoverNews = lazy(() => import('./pages/discover/DiscoverNews'));
 const DiscoverLearning = lazy(() => import('./pages/discover/DiscoverLearning'));
 const DiscoverEcosystems = lazy(() => import('./pages/discover/DiscoverEcosystems'));
+const StartupResourcesLibrary = lazy(() => import('./pages/StartupResourcesLibrary'));
+const StartupResourceDetail = lazy(() => import('./pages/StartupResourceDetail'));
+const AdminResourcesCMS = lazy(() => import('./pages/admin/resources/AdminResourcesCMS'));
 
 
 const ScrollToTop = () => {
@@ -476,6 +479,8 @@ const App: React.FC = () => {
 
 
             <Route path="/about" element={<About />} />
+            <Route path="/startup-resources" element={<StartupResourcesLibrary />} />
+            <Route path="/startup-resources/:id" element={<StartupResourceDetail />} />
             <Route path="/blog" element={<Blog />} />
             <Route path="/feature-preview/:id" element={<PublicRoute><FeaturePreview /></PublicRoute>} />
             <Route path="/login" element={<PublicRoute><UnifiedAuth /></PublicRoute>} />
@@ -588,6 +593,7 @@ const App: React.FC = () => {
               <Route path="resumes" element={<AdminResumeManagement />} />
               <Route path="ads" element={<AdsManagement />} />
               <Route path="audit-logs" element={<AdminAuditLogs />} />
+              <Route path="resources" element={<AdminResourcesCMS />} />
 
               <Route
                 path="settings"
